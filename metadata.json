@@ -1,0 +1,6 @@
+{
+  "name": "Door Billing",
+  "description": "Door Business Billing and Invoicing App with dimension calculation in Sq.ft, customer ledger balance, WhatsApp sharing, print/PDF invoice generation, and company profile management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

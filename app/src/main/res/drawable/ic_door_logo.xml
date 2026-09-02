@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+    <!-- Circle badge background -->
+    <path
+        android:fillColor="#0284C7"
+        android:pathData="M100,10 C149.7,10 190,50.3 190,100 C190,149.7 149.7,190 100,190 C50.3,190 10,149.7 10,100 C10,50.3 50.3,10 100,10 Z" />
+    <path
+        android:fillColor="#0369A1"
+        android:pathData="M100,18 C145.3,18 182,54.7 182,100 C182,145.3 145.3,182 100,182 C54.7,182 18,145.3 18,100 C18,54.7 54.7,18 100,18 Z" />
+    
+    <!-- Door Frame in Logo -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M65,45 C65,42.8 66.8,41 69,41 L131,41 C133.2,41 135,42.8 135,45 L135,155 L65,155 Z" />
+    <path
+        android:fillColor="#0284C7"
+        android:pathData="M73,49 L127,49 L127,155 L73,155 Z" />
+    
+    <!-- Panels -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M79,55 L121,55 C123.2,55 125,56.8 125,59 L125,92 C125,94.2 123.2,96 121,96 L79,96 C76.8,96 75,94.2 75,92 L75,59 C75,56.8 76.8,55 79,55 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M79,104 L121,104 C123.2,104 125,105.8 125,108 L125,145 C125,147.2 123.2,149 121,149 L79,149 C76.8,149 75,147.2 75,145 L75,108 C75,105.8 76.8,104 79,104 Z" />
+    
+    <!-- Gold Handle -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M81,96 C81,93.8 82.8,92 85,92 L85,104 C82.8,104 81,102.2 81,100 Z" />
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M85,95 L93,95 C94.1,95 95,95.9 95,97 L95,99 C95,100.1 94.1,101 93,101 L85,101 Z" />
+</vector>
