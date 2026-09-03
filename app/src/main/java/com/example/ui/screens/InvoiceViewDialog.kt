@@ -251,6 +251,16 @@ fun InvoiceViewDialog(
                                     }
                                 }
 
+                                if (bill.otherCharges > 0) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("${bill.otherChargesDescription.ifBlank { "Cutting Charges" }}:", fontSize = 11.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.Medium)
+                                        Text("+ " + DimensionCalculator.formatCurrency(bill.otherCharges), fontSize = 11.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
                                 if (bill.discountAmount > 0) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -287,7 +297,7 @@ fun InvoiceViewDialog(
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
 
                                 Text(
-                                    text = "SUBJECT TO ${company.jurisdiction.ifBlank { "LOCAL" }.uppercase()} JURISDICTION",
+                                    text = DimensionCalculator.formatJurisdictionClause(company.jurisdiction),
                                     fontSize = 9.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,

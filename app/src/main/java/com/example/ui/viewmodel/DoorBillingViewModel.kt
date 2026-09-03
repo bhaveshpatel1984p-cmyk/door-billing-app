@@ -141,6 +141,8 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val taxRateDraft = MutableStateFlow(18.0) // 18% GST default
     val isGstIncludedDraft = MutableStateFlow(true)
     val discountDraft = MutableStateFlow(0.0)
+    val otherChargesDraft = MutableStateFlow(0.0)
+    val otherChargesDescDraft = MutableStateFlow("Cutting Charges")
     val paidAmountDraft = MutableStateFlow(0.0)
     val notesDraft = MutableStateFlow("")
     val billItemsDraft = MutableStateFlow<List<BillItemEntity>>(emptyList())
@@ -163,6 +165,8 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             taxRateDraft.value = 18.0
             isGstIncludedDraft.value = true
             discountDraft.value = 0.0
+            otherChargesDraft.value = 0.0
+            otherChargesDescDraft.value = "Cutting Charges"
             paidAmountDraft.value = 0.0
             notesDraft.value = ""
             billItemsDraft.value = emptyList()
@@ -190,6 +194,8 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         taxRateDraft.value = bill.taxRate
         isGstIncludedDraft.value = bill.isGstIncluded
         discountDraft.value = bill.discountAmount
+        otherChargesDraft.value = bill.otherCharges
+        otherChargesDescDraft.value = bill.otherChargesDescription.ifBlank { "Cutting Charges" }
         paidAmountDraft.value = bill.paidAmount
         notesDraft.value = bill.notes
         billItemsDraft.value = billWithItems.items
@@ -299,7 +305,9 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         val taxRate = if (isGstIncludedDraft.value) taxRateDraft.value else 0.0
         val gstTotal = if (taxRate > 0) (subTotal * taxRate / 100.0) else 0.0
         val halfGst = gstTotal / 2.0
-        val grandTotal = Math.max(0.0, (subTotal + gstTotal) - discountDraft.value)
+        val otherCharges = otherChargesDraft.value
+        val otherChargesDesc = otherChargesDescDraft.value.trim().ifBlank { "Cutting Charges" }
+        val grandTotal = Math.max(0.0, (subTotal + gstTotal + otherCharges) - discountDraft.value)
 
         viewModelScope.launch {
             val billEntity = BillEntity(
@@ -319,6 +327,8 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
                 sgstAmount = halfGst,
                 igstAmount = 0.0,
                 discountAmount = discountDraft.value,
+                otherCharges = otherCharges,
+                otherChargesDescription = otherChargesDesc,
                 grandTotal = grandTotal,
                 paidAmount = paidAmountDraft.value,
                 notes = notesDraft.value.trim()

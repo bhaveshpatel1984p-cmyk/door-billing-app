@@ -101,6 +101,8 @@ fun NewEntryScreen(
     val taxRate by viewModel.taxRateDraft.collectAsStateWithLifecycle()
     val isGstIncluded by viewModel.isGstIncludedDraft.collectAsStateWithLifecycle()
     val discount by viewModel.discountDraft.collectAsStateWithLifecycle()
+    val otherCharges by viewModel.otherChargesDraft.collectAsStateWithLifecycle()
+    val otherChargesDesc by viewModel.otherChargesDescDraft.collectAsStateWithLifecycle()
     val paidAmount by viewModel.paidAmountDraft.collectAsStateWithLifecycle()
     val notes by viewModel.notesDraft.collectAsStateWithLifecycle()
     val items by viewModel.billItemsDraft.collectAsStateWithLifecycle()
@@ -140,7 +142,7 @@ fun NewEntryScreen(
     val totalSqFt = items.sumOf { it.sqFt }
     val totalQty = items.sumOf { it.qty }
     val gstAmount = if (isGstIncluded && taxRate > 0) (subTotal * taxRate / 100.0) else 0.0
-    val grandTotal = Math.max(0.0, (subTotal + gstAmount) - discount)
+    val grandTotal = Math.max(0.0, (subTotal + gstAmount + otherCharges) - discount)
 
     Scaffold(
         topBar = {
@@ -678,6 +680,75 @@ fun NewEntryScreen(
                                 ) {
                                     Text("SGST (${(taxRate / 2)}%):", color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(DimensionCalculator.formatCurrency(gstAmount / 2.0))
+                                }
+                            }
+
+                            // Other Charges (e.g. Cutting Charges)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF8FAFC), RoundedCornerShape(10.dp))
+                                    .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(10.dp))
+                                    .padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Other Charges (Cutting / Transport)",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.5.sp,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    if (otherCharges > 0) {
+                                        Text(
+                                            text = "+ " + DimensionCalculator.formatCurrency(otherCharges),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.5.sp,
+                                            color = Color(0xFF0284C7)
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = otherChargesDesc,
+                                        onValueChange = { viewModel.otherChargesDescDraft.value = it },
+                                        label = { Text("Charge Name") },
+                                        placeholder = { Text("Cutting Charges") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1.3f)
+                                    )
+                                    OutlinedTextField(
+                                        value = if (otherCharges == 0.0) "" else otherCharges.toString(),
+                                        onValueChange = { viewModel.otherChargesDraft.value = it.toDoubleOrNull() ?: 0.0 },
+                                        label = { Text("Amount (₹)") },
+                                        placeholder = { Text("0.00") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    listOf("Cutting Charges", "Transportation", "Loading Charges", "Polish Charges").forEach { chipName ->
+                                        FilterChip(
+                                            selected = otherChargesDesc.equals(chipName, ignoreCase = true),
+                                            onClick = { viewModel.otherChargesDescDraft.value = chipName },
+                                            label = { Text(chipName, fontSize = 11.sp) }
+                                        )
+                                    }
                                 }
                             }
 

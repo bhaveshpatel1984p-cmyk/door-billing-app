@@ -40,6 +40,8 @@ data class BillEntity(
     val sgstAmount: Double = 0.0,
     val igstAmount: Double = 0.0,
     val discountAmount: Double = 0.0,
+    val otherCharges: Double = 0.0,
+    val otherChargesDescription: String = "Cutting Charges",
     val grandTotal: Double = 0.0,
     val paidAmount: Double = 0.0,
     val notes: String = "",
@@ -106,7 +108,7 @@ data class CompanyProfileEntity(
     val bankName: String = "State Bank of India",
     val accountNo: String = "12345678901234",
     val ifscCode: String = "SBIN0001234",
-    val jurisdiction: String = "Subject to Local Jurisdiction only",
+    val jurisdiction: String = "Kudachi",
     val declaration: String = "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct. Goods once sold will not be taken back.",
     val logoUri: String? = null // Stored local Uri or null to use default vector logo
 )

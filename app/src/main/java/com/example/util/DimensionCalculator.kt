@@ -129,4 +129,33 @@ object DimensionCalculator {
 
         return "$rupeesStr$paiseStr Only".trim()
     }
+
+    /**
+     * Formats jurisdiction clause consistently to:
+     * "SUBJECT TO <PLACE> JURISDICTION ONLY"
+     * Handles inputs like "Kudachi", "Subject to Kudachi Jurisdiction only",
+     * or previously duplicated strings like "SUBJECT TO SUBJECT TO ...".
+     */
+    fun formatJurisdictionClause(raw: String?): String {
+        var clean = raw?.trim()?.uppercase(Locale.getDefault()) ?: ""
+        if (clean.isBlank()) return "SUBJECT TO KUDACHI JURISDICTION ONLY"
+
+        while (clean.startsWith("SUBJECT TO")) {
+            clean = clean.removePrefix("SUBJECT TO").trim()
+        }
+        var changed = true
+        while (changed) {
+            changed = false
+            if (clean.endsWith("ONLY")) {
+                clean = clean.removeSuffix("ONLY").trim()
+                changed = true
+            }
+            if (clean.endsWith("JURISDICTION")) {
+                clean = clean.removeSuffix("JURISDICTION").trim()
+                changed = true
+            }
+        }
+        val place = if (clean.isBlank()) "KUDACHI" else clean
+        return "SUBJECT TO $place JURISDICTION ONLY"
+    }
 }

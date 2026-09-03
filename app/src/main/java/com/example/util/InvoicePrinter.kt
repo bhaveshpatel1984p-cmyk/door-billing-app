@@ -135,6 +135,16 @@ object InvoicePrinter {
             """.trimIndent()
         } else ""
 
+        val otherChargesRow = if (bill.otherCharges > 0) {
+            val chargeName = bill.otherChargesDescription.ifBlank { "Cutting Charges" }
+            """
+            <tr>
+                <td colspan="7" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#0369A1;">$chargeName:</td>
+                <td colspan="2" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#0369A1;">+₹${String.format(java.util.Locale.US, "%.2f", bill.otherCharges)}</td>
+            </tr>
+            """.trimIndent()
+        } else ""
+
         val discountRow = if (bill.discountAmount > 0) {
             """
             <tr>
@@ -262,6 +272,7 @@ object InvoicePrinter {
                             <td style="border:1px solid #333; text-align:right; padding:5px 6px; font-weight:bold;">₹${String.format(java.util.Locale.US, "%.2f", bill.subTotal)}</td>
                         </tr>
                         $gstRows
+                        $otherChargesRow
                         $discountRow
                         <tr>
                             <td colspan="7" style="border:1px solid #333; text-align:right; padding:6px 8px; font-size:12px; font-weight:bold; background-color:#e0f2fe; color:#0369A1;">GRAND TOTAL:</td>
@@ -299,7 +310,7 @@ object InvoicePrinter {
 
                 <!-- Bottom Jurisdiction Banner (Requirement 4) -->
                 <div style="text-align:center; padding:6px 12px; background-color:#f1f5f9; border-top:1px solid #333; font-size:10px; font-weight:bold; color:#1e293b; letter-spacing:0.5px;">
-                    SUBJECT TO ${company.jurisdiction.ifBlank { "LOCAL" }.uppercase()} JURISDICTION
+                    ${DimensionCalculator.formatJurisdictionClause(company.jurisdiction)}
                 </div>
             </div>
         </body>

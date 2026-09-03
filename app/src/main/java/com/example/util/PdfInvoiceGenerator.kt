@@ -353,6 +353,18 @@ object PdfInvoiceGenerator {
             canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
         }
 
+        // Other Charges / Cutting Charges (if applicable)
+        if (bill.otherCharges > 0) {
+            textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textPaint.color = Color.parseColor("#0369A1")
+            val chargeName = bill.otherChargesDescription.ifBlank { "Cutting Charges" }
+            val chargeLabel = if (chargeName.length > 20) chargeName.take(18) + "..:" else "$chargeName:"
+            canvas.drawText(chargeLabel, colRate - 65f, currentY + 13f, textPaint)
+            canvas.drawText("+ ₹${String.format(Locale.US, "%.2f", bill.otherCharges)}", colAmount + 4f, currentY + 13f, textPaint)
+            currentY += 16f
+            canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
+        }
+
         // Discount (if applicable)
         if (bill.discountAmount > 0) {
             textPaint.color = Color.parseColor("#DC2626")
@@ -441,7 +453,7 @@ object PdfInvoiceGenerator {
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.textSize = 8.5f
         textPaint.color = Color.parseColor("#1E293B")
-        val jurisdictionText = "SUBJECT TO ${company.jurisdiction.ifBlank { "LOCAL" }.uppercase(Locale.getDefault())} JURISDICTION"
+        val jurisdictionText = DimensionCalculator.formatJurisdictionClause(company.jurisdiction)
         val jWidth = textPaint.measureText(jurisdictionText)
         canvas.drawText(jurisdictionText, (pageWidth - jWidth) / 2f, pageHeight - margin - 8f, textPaint)
     }

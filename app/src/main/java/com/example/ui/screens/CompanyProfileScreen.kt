@@ -458,11 +458,12 @@ fun CompanyProfileScreen(
                         OutlinedTextField(
                             value = jurisdiction,
                             onValueChange = { jurisdiction = it },
-                            label = { Text("Jurisdiction Clause") },
-                            placeholder = { Text("Subject to Local City Jurisdiction only") },
+                            label = { Text("Jurisdiction City / Clause") },
+                            placeholder = { Text("KUDACHI") },
+                            supportingText = { Text("Appears as 'SUBJECT TO [CITY] JURISDICTION ONLY' on bills") },
                             leadingIcon = { Icon(Icons.Default.Gavel, contentDescription = null) },
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Next),
                             modifier = Modifier.fillMaxWidth()
                         )
 
