@@ -64,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -76,12 +77,14 @@ import coil.compose.AsyncImage
 import com.example.data.db.CompanyProfileEntity
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CompanyProfileScreen(
     viewModel: DoorBillingViewModel
 ) {
+    val context = LocalContext.current
     val profileState by viewModel.companyProfile.collectAsStateWithLifecycle()
 
     var businessName by remember(profileState) { mutableStateOf(profileState.businessName) }
@@ -100,11 +103,22 @@ fun CompanyProfileScreen(
     var logoUri by remember(profileState) { mutableStateOf(profileState.logoUri) }
 
     // Android Photo Picker for company logo (zero permissions required)
+    // Copies image permanently into internal storage to avoid permission revocation
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            logoUri = uri.toString()
+            try {
+                val logoFile = File(context.filesDir, "company_logo.png")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    logoFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                logoUri = logoFile.absolutePath
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -181,15 +195,11 @@ fun CompanyProfileScreen(
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        Icons.Default.DoorBack,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(40.dp)
-                                    )
-                                    Text("Default Logo", fontSize = 9.sp, color = MaterialTheme.colorScheme.primary)
-                                }
+                                AsyncImage(
+                                    model = com.example.R.drawable.img_nirmal_door_logo,
+                                    contentDescription = "Default Nirmal Door Logo",
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
                         }
 
@@ -210,7 +220,14 @@ fun CompanyProfileScreen(
                             }
 
                             if (!logoUri.isNullOrBlank()) {
-                                TextButton(onClick = { logoUri = null }) {
+                                TextButton(onClick = {
+                                    try {
+                                        File(context.filesDir, "company_logo.png").delete()
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                    logoUri = null
+                                }) {
                                     Text("Reset Logo", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                                 }
                             }

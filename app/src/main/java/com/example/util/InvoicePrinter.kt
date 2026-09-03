@@ -91,19 +91,31 @@ object InvoicePrinter {
             """.trimIndent()
         }
 
-        // SVG Logo representation if local file uri not present
-        val logoHtml = if (!company.logoUri.isNullOrBlank()) {
-            """<img src="${company.logoUri}" style="max-height: 65px; max-width: 140px; object-fit: contain; margin-bottom: 4px;" alt="Logo" />"""
+        // Base64 Logo representation so WebView can render offline without file permission issues
+        val logoBase64 = try {
+            if (!company.logoUri.isNullOrBlank()) {
+                val f = java.io.File(company.logoUri)
+                if (f.exists()) {
+                    android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP)
+                } else null
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+
+        val logoHtml = if (!logoBase64.isNullOrBlank()) {
+            """<img src="data:image/png;base64,$logoBase64" style="max-height: 65px; max-width: 140px; object-fit: contain; margin-bottom: 4px; margin-right: 10px;" alt="Logo" />"""
+        } else if (!company.logoUri.isNullOrBlank()) {
+            """<img src="${company.logoUri}" style="max-height: 65px; max-width: 140px; object-fit: contain; margin-bottom: 4px; margin-right: 10px;" alt="Logo" />"""
         } else {
             """
-            <div style="display:inline-block; vertical-align:middle; margin-right:8px;">
-                <svg width="45" height="45" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="15" y="10" width="70" height="80" rx="4" fill="#0369A1" stroke="#075985" stroke-width="3"/>
-                    <rect x="25" y="20" width="22" height="30" rx="2" fill="#E0F2FE"/>
-                    <rect x="53" y="20" width="22" height="30" rx="2" fill="#E0F2FE"/>
-                    <rect x="25" y="55" width="22" height="28" rx="2" fill="#E0F2FE"/>
-                    <rect x="53" y="55" width="22" height="28" rx="2" fill="#E0F2FE"/>
-                    <circle cx="28" cy="52" r="3" fill="#F59E0B"/>
+            <div style="display:inline-block; vertical-align:middle; margin-right:10px;">
+                <svg width="64" height="44" viewBox="0 0 512 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M 220,40 L 320,40 C 420,40 450,95 450,170 C 450,245 420,300 320,300 L 200,300 L 220,40 Z" fill="#0C1A30"/>
+                    <path d="M 255,100 L 315,100 C 375,100 395,135 395,170 C 395,205 375,240 315,240 L 235,240 Z" fill="#FFFFFF"/>
+                    <polygon points="80,300 120,40 185,40 145,300" fill="#E11D2A"/>
+                    <polygon points="120,40 205,40 270,300 185,300" fill="#E11D2A"/>
+                    <polygon points="190,300 250,100 305,115 250,300" stroke="#FFFFFF" stroke-width="12" fill="#E11D2A"/>
                 </svg>
             </div>
             """.trimIndent()
@@ -176,7 +188,10 @@ object InvoicePrinter {
                                         <strong>GSTIN:</strong> ${company.gstNo} &nbsp;|&nbsp; <strong>PAN:</strong> ${company.pan}
                                     </div>
                                     <div style="font-size:10.5px; color:#333;">
-                                        <strong>Mobile:</strong> ${company.mobile} &nbsp;|&nbsp; <strong>State:</strong> ${company.state} (${company.stateCode})
+                                        <strong>Mobile:</strong> ${company.mobile} &nbsp;|&nbsp; <strong>Email:</strong> ${company.email.ifBlank { "N/A" }}
+                                    </div>
+                                    <div style="font-size:10.5px; color:#333;">
+                                        <strong>State:</strong> ${company.state} (${company.stateCode})
                                     </div>
                                 </div>
                             </div>
@@ -194,10 +209,6 @@ object InvoicePrinter {
                                 <tr>
                                     <td><strong>Unit:</strong></td>
                                     <td>${bill.dimensionUnit} Dimension</td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Jurisdiction:</strong></td>
-                                    <td>${company.jurisdiction}</td>
                                 </tr>
                             </table>
                         </td>
@@ -285,6 +296,11 @@ object InvoicePrinter {
                         </td>
                     </tr>
                 </table>
+
+                <!-- Bottom Jurisdiction Banner (Requirement 4) -->
+                <div style="text-align:center; padding:6px 12px; background-color:#f1f5f9; border-top:1px solid #333; font-size:10px; font-weight:bold; color:#1e293b; letter-spacing:0.5px;">
+                    SUBJECT TO ${company.jurisdiction.ifBlank { "LOCAL" }.uppercase()} JURISDICTION
+                </div>
             </div>
         </body>
         </html>

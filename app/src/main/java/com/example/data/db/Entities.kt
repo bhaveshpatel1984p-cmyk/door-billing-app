@@ -95,7 +95,7 @@ data class PaymentEntity(
 data class CompanyProfileEntity(
     @PrimaryKey
     val id: Int = 1,
-    val businessName: String = "DOOR CRAFT & BILLING CO.",
+    val businessName: String = "NIRMAL DOOR",
     val address: String = "Plot No. 12, Industrial Area, Timber Market",
     val gstNo: String = "24AAAAA0000A1Z5",
     val mobile: String = "9876543210",

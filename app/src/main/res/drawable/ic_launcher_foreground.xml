@@ -1,58 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <group
-        android:translateX="0"
-        android:translateY="0">
-        <!-- Door Frame Outer -->
-        <path
-            android:fillColor="#38BDF8"
-            android:pathData="M32,24 C32,22.9 32.9,22 34,22 L74,22 C75.1,22 76,22.9 76,24 L76,86 L32,86 Z" />
-        
-        <!-- Door Leaf Inner Body -->
-        <path
-            android:fillColor="#0284C7"
-            android:pathData="M36,26 L72,26 L72,86 L36,86 Z" />
-
-        <!-- Door Panel Top -->
-        <path
-            android:fillColor="#0369A1"
-            android:pathData="M40,30 L68,30 C69.1,30 70,30.9 70,32 L70,50 C70,51.1 69.1,52 68,52 L40,52 C38.9,52 38,51.1 38,50 L38,32 C38,30.9 38.9,30 40,30 Z" />
-
-        <!-- Door Panel Bottom -->
-        <path
-            android:fillColor="#0369A1"
-            android:pathData="M40,56 L68,56 C69.1,56 70,56.9 70,58 L70,80 C70,81.1 69.1,82 68,82 L40,82 C38.9,82 38,81.1 38,80 L38,58 C38,56.9 38.9,56 40,56 Z" />
-
-        <!-- Door Handle (Metallic Gold) -->
-        <path
-            android:fillColor="#FBBF24"
-            android:pathData="M42,53 C42,51.9 42.9,51 44,51 L44,57 C42.9,57 42,56.1 42,53 Z" />
-        <path
-            android:fillColor="#F59E0B"
-            android:pathData="M44,52 L48,52 C48.6,52 49,52.4 49,53 L49,55 C49,55.6 48.6,56 48,56 L44,56 Z" />
-
-        <!-- Ground base plate -->
-        <path
-            android:fillColor="#94A3B8"
-            android:pathData="M28,86 L80,86 L80,89 C80,89.6 79.6,90 79,90 L29,90 C28.4,90 28,89.6 28,89 Z" />
-
-        <!-- Billing / Receipt Icon Badge Floating at Bottom Right -->
-        <path
-            android:fillColor="#10B981"
-            android:pathData="M60,60 L82,60 C83.1,60 84,60.9 84,62 L84,84 C84,85.1 83.1,86 82,86 L60,86 C58.9,86 58,85.1 58,84 L58,62 C58,60.9 58.9,60 60,60 Z" />
-        <!-- Badge Lines -->
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M63,66 L79,66 A1,1 0 0,0 79,64 L63,64 A1,1 0 0,0 63,66 Z" />
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M63,71 L75,71 A1,1 0 0,0 75,69 L63,69 A1,1 0 0,0 63,71 Z" />
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M63,76 L71,76 A1,1 0 0,0 71,74 L63,74 A1,1 0 0,0 63,76 Z" />
-    </group>
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="70dp"
+        android:height="70dp"
+        android:drawable="@drawable/img_nirmal_door_logo"
+        android:gravity="center" />
+</layer-list>

@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.DoorBack
 import androidx.compose.material.icons.filled.EditNote
@@ -50,6 +52,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -101,16 +105,20 @@ fun DashboardScreen(
                 StatCard(
                     title = "Total Billed",
                     value = DimensionCalculator.formatCurrency(totalRevenue),
-                    subtitle = "${bills.size} Invoices",
+                    subtitle = "${bills.size} Invoices (Tap for Stats)",
                     color = Color(0xFF0284C7),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { viewModel.navigateTo(AppScreen.FINANCIAL_STATS) }
                 )
                 StatCard(
                     title = "Due Balance",
                     value = DimensionCalculator.formatCurrency(totalOutstanding),
-                    subtitle = "${customers.size} Customers",
+                    subtitle = "${customers.size} Customers (Tap for Stats)",
                     color = if (totalOutstanding > 0) Color(0xFFDC2626) else Color(0xFF16A34A),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { viewModel.navigateTo(AppScreen.FINANCIAL_STATS) }
                 )
             }
         }
@@ -191,7 +199,7 @@ fun DashboardScreen(
             }
         }
 
-        // 5) Company Profile view/edit & 6) Exit
+        // 5) Company Profile view/edit & Financial Stats
         item {
             Row(
                 modifier = Modifier
@@ -210,7 +218,27 @@ fun DashboardScreen(
                 )
 
                 DashboardActionButton(
-                    title = "6) Exit",
+                    title = "6) Financial Stats",
+                    subtitle = "Revenue, Due & Invoices",
+                    icon = Icons.Default.Assessment,
+                    iconBgColor = Color(0xFF0284C7),
+                    testTag = "financial_stats_button",
+                    modifier = Modifier.weight(1f),
+                    onClick = { viewModel.navigateTo(AppScreen.FINANCIAL_STATS) }
+                )
+            }
+        }
+
+        // 7) Exit
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                DashboardActionButton(
+                    title = "7) Exit",
                     subtitle = "Close Application",
                     icon = Icons.AutoMirrored.Filled.ExitToApp,
                     iconBgColor = Color(0xFF475569),
@@ -218,6 +246,8 @@ fun DashboardScreen(
                     modifier = Modifier.weight(1f),
                     onClick = { showExitDialog = true }
                 )
+
+                Spacer(modifier = Modifier.weight(1f))
             }
         }
 
@@ -353,8 +383,8 @@ fun DashboardHeader(
                     modifier = Modifier
                         .size(56.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Color.White.copy(alpha = 0.2f))
-                        .padding(4.dp),
+                        .background(Color.White)
+                        .padding(2.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     if (!company.logoUri.isNullOrBlank()) {
@@ -364,11 +394,11 @@ fun DashboardHeader(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        Icon(
-                            imageVector = Icons.Default.DoorBack,
-                            contentDescription = "Door Icon",
-                            tint = Color.White,
-                            modifier = Modifier.size(36.dp)
+                        Image(
+                            painter = painterResource(id = com.example.R.drawable.img_nirmal_door_logo),
+                            contentDescription = "Nirmal Door Logo",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
                         )
                     }
                 }

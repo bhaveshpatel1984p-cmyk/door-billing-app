@@ -21,12 +21,14 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.db.BillWithItems
+import com.example.ui.screens.AppLockScreen
 import com.example.ui.screens.CompanyProfileScreen
 import com.example.ui.screens.CreateCustomerScreen
 import com.example.ui.screens.CustomerBalanceScreen
 import com.example.ui.screens.CustomerLedgerScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.EditEntryScreen
+import com.example.ui.screens.FinancialStatsScreen
 import com.example.ui.screens.InvoiceViewDialog
 import com.example.ui.screens.NewEntryScreen
 import com.example.ui.theme.MyApplicationTheme
@@ -55,7 +57,17 @@ fun DoorBillingMainApp(
   val company by viewModel.companyProfile.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
 
+  var isAppLocked by remember { mutableStateOf(true) }
   var activeInvoicePreview by remember { mutableStateOf<BillWithItems?>(null) }
+
+  if (isAppLocked) {
+    AppLockScreen(
+      onUnlockSuccess = {
+        isAppLocked = false
+      }
+    )
+    return
+  }
 
   // Observe toast/snackbar messages from ViewModel
   LaunchedEffect(Unit) {
@@ -117,6 +129,10 @@ fun DoorBillingMainApp(
 
         AppScreen.COMPANY_PROFILE -> {
           CompanyProfileScreen(viewModel = viewModel)
+        }
+
+        AppScreen.FINANCIAL_STATS -> {
+          FinancialStatsScreen(viewModel = viewModel)
         }
       }
 

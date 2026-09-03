@@ -32,7 +32,8 @@ enum class AppScreen {
     EDIT_ENTRY,
     CUSTOMER_BALANCE,
     CUSTOMER_LEDGER,
-    COMPANY_PROFILE
+    COMPANY_PROFILE,
+    FINANCIAL_STATS
 }
 
 class DoorBillingViewModel(application: Application) : AndroidViewModel(application) {

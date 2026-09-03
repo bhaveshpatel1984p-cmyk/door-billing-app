@@ -16,6 +16,12 @@ class ExampleRobolectricTest {
   fun `read string from context`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
-    assertEquals("My Application", appName)
+    assertEquals("Door Billing", appName)
+  }
+
+  @Test
+  fun `dimension calculator square feet calculation`() {
+    val sqFt = com.example.util.DimensionCalculator.calculateSqFt(78.0, 32.0, 1, "Inches")
+    assertEquals(17.33, sqFt, 0.01)
   }
 }

@@ -125,16 +125,14 @@ fun InvoiceViewDialog(
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (!company.logoUri.isNullOrBlank()) {
-                                        AsyncImage(
-                                            model = company.logoUri,
-                                            contentDescription = "Logo",
-                                            modifier = Modifier
-                                                .size(44.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                    }
+                                    AsyncImage(
+                                        model = if (!company.logoUri.isNullOrBlank()) company.logoUri else com.example.R.drawable.img_nirmal_door_logo,
+                                        contentDescription = "Logo",
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(
                                             text = company.businessName,
@@ -142,7 +140,13 @@ fun InvoiceViewDialog(
                                             fontSize = 15.sp,
                                             color = MaterialTheme.colorScheme.primary
                                         )
-                                        Text("GST: ${company.gstNo} • Ph: ${company.mobile}", fontSize = 10.5.sp)
+                                        Text(
+                                            buildString {
+                                                append("GST: ${company.gstNo} • Ph: ${company.mobile}")
+                                                if (company.email.isNotBlank()) append(" • Email: ${company.email}")
+                                            },
+                                            fontSize = 10.5.sp
+                                        )
                                     }
                                 }
 
@@ -278,6 +282,17 @@ fun InvoiceViewDialog(
                                     fontSize = 10.5.sp,
                                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
+
+                                Text(
+                                    text = "SUBJECT TO ${company.jurisdiction.ifBlank { "LOCAL" }.uppercase()} JURISDICTION",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                 )
                             }
                         }

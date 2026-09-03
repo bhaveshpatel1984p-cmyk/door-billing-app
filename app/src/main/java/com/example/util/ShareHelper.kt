@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.example.data.db.BillWithItems
 import com.example.data.db.CompanyProfileEntity
 import com.example.data.db.CustomerEntity
@@ -12,7 +13,7 @@ import com.example.data.db.LedgerEntry
 object ShareHelper {
 
     /**
-     * Shares invoice details directly via WhatsApp or system share.
+     * Generates and Shares invoice PDF directly via WhatsApp or system share.
      */
     fun shareInvoiceWhatsApp(
         context: Context,
@@ -21,55 +22,68 @@ object ShareHelper {
         targetMobile: String? = null
     ) {
         val bill = billWithItems.bill
-        val items = billWithItems.items
-        val totalSqFt = items.sumOf { it.sqFt }
-        val totalQty = items.sumOf { it.qty }
-
-        val sb = StringBuilder()
-        sb.appendLine("🧾 *TAX INVOICE / BILL*")
-        sb.appendLine("*${company.businessName}*")
-        sb.appendLine("📞 ${company.mobile} | GST: ${company.gstNo}")
-        sb.appendLine("━━━━━━━━━━━━━━━━━━━")
-        sb.appendLine("👤 *Customer:* ${bill.customerName}")
-        if (bill.customerMobile.isNotBlank()) sb.appendLine("📱 Mobile: ${bill.customerMobile}")
-        sb.appendLine("📄 *Invoice No:* ${bill.invoiceNo}")
-        sb.appendLine("📅 *Date:* ${DimensionCalculator.formatDate(bill.dateMillis)}")
-        sb.appendLine("━━━━━━━━━━━━━━━━━━━")
-        sb.appendLine("🚪 *ITEMS DETAILS (${bill.dimensionUnit}):*")
-
-        items.forEachIndexed { index, item ->
-            sb.appendLine(
-                "${index + 1}. *${item.particular}*" +
-                        "\n   Size: ${DimensionCalculator.formatDimension(item.height)} x ${DimensionCalculator.formatDimension(item.width)} | Qty: ${item.qty}" +
-                        "\n   Area: ${String.format(java.util.Locale.US, "%.2f", item.sqFt)} Sq.Ft @ ₹${String.format(java.util.Locale.US, "%.2f", item.rate)} = *₹${String.format(java.util.Locale.US, "%.2f", item.amount)}*"
+        try {
+            // Generate standard PDF file
+            val pdfFile = PdfInvoiceGenerator.generateInvoicePdf(context, billWithItems, company)
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                pdfFile
             )
+
+            val caption = buildString {
+                appendLine("🧾 *TAX INVOICE / BILL*")
+                appendLine("*${company.businessName}*")
+                appendLine("📄 *Invoice No:* ${bill.invoiceNo}")
+                appendLine("👤 *Customer:* ${bill.customerName}")
+                appendLine("💰 *Grand Total:* ₹${String.format(java.util.Locale.US, "%.2f", bill.grandTotal)}")
+                appendLine("Please find attached official PDF Tax Invoice.")
+                appendLine("Thank you for your business! 🙏")
+            }
+
+            sharePdfToWhatsAppOrGeneral(context, uri, caption)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to generate PDF: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
 
-        sb.appendLine("━━━━━━━━━━━━━━━━━━━")
-        sb.appendLine("📦 *Total Doors:* $totalQty")
-        sb.appendLine("📐 *Total Area:* ${String.format(java.util.Locale.US, "%.2f", totalSqFt)} Sq.Ft")
-        sb.appendLine("💵 *Sub Total:* ₹${String.format(java.util.Locale.US, "%.2f", bill.subTotal)}")
+    private fun sharePdfToWhatsAppOrGeneral(context: Context, pdfUri: Uri, caption: String) {
+        try {
+            val whatsappIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, pdfUri)
+                putExtra(Intent.EXTRA_TEXT, caption)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                setPackage("com.whatsapp")
+            }
 
-        if (bill.isGstIncluded && bill.taxRate > 0) {
-            val halfRate = bill.taxRate / 2.0
-            sb.appendLine("🏛️ *CGST ($halfRate%):* ₹${String.format(java.util.Locale.US, "%.2f", bill.cgstAmount)}")
-            sb.appendLine("🏛️ *SGST ($halfRate%):* ₹${String.format(java.util.Locale.US, "%.2f", bill.sgstAmount)}")
+            try {
+                context.startActivity(whatsappIntent)
+            } catch (e1: Exception) {
+                // Try WhatsApp Business
+                try {
+                    val w4bIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, pdfUri)
+                        putExtra(Intent.EXTRA_TEXT, caption)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        setPackage("com.whatsapp.w4b")
+                    }
+                    context.startActivity(w4bIntent)
+                } catch (e2: Exception) {
+                    // Fallback to generic chooser
+                    val chooserIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/pdf"
+                        putExtra(Intent.EXTRA_STREAM, pdfUri)
+                        putExtra(Intent.EXTRA_TEXT, caption)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(chooserIntent, "Share PDF Invoice"))
+                }
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not share PDF: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-
-        if (bill.discountAmount > 0) {
-            sb.appendLine("🏷️ *Discount:* -₹${String.format(java.util.Locale.US, "%.2f", bill.discountAmount)}")
-        }
-
-        sb.appendLine("💰 *GRAND TOTAL:* *₹${String.format(java.util.Locale.US, "%.2f", bill.grandTotal)}*")
-        sb.appendLine("━━━━━━━━━━━━━━━━━━━")
-        sb.appendLine("🏦 *Bank Details for Payment:*")
-        sb.appendLine("Bank: ${company.bankName}")
-        sb.appendLine("A/C: ${company.accountNo}")
-        sb.appendLine("IFSC: ${company.ifscCode}")
-        sb.appendLine("━━━━━━━━━━━━━━━━━━━")
-        sb.appendLine("Thank you for your business! 🙏")
-
-        shareToWhatsAppOrGeneral(context, sb.toString(), targetMobile ?: bill.customerMobile)
     }
 
     /**
