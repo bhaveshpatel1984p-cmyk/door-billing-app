@@ -22,11 +22,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -82,10 +87,12 @@ fun CustomerLedgerScreen(
     val company by viewModel.companyProfile.collectAsStateWithLifecycle()
 
     var showPaymentDialog by remember { mutableStateOf(false) }
+    var showPdfViewerDialog by remember { mutableStateOf(false) }
     var payAmountStr by remember { mutableStateOf("") }
     var payMode by remember { mutableStateOf("Cash") }
     var payRef by remember { mutableStateOf("") }
     var payNotes by remember { mutableStateOf("") }
+    var payDateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
 
     if (customer == null) {
         viewModel.navigateTo(AppScreen.CUSTOMER_BALANCE)
@@ -110,6 +117,13 @@ fun CustomerLedgerScreen(
                     }
                 },
                 actions = {
+                    // View PDF Button in TopBar
+                    IconButton(
+                        onClick = { showPdfViewerDialog = true }
+                    ) {
+                        Icon(Icons.Default.Visibility, contentDescription = "View PDF Ledger", tint = Color.White)
+                    }
+
                     // Print Button in TopBar
                     IconButton(
                         onClick = {
@@ -226,23 +240,41 @@ fun CustomerLedgerScreen(
                 }
             }
 
-            // Quick Action Buttons Bar: Record Payment | Print | WhatsApp
+            // Quick Action Buttons Bar: Record Payment | View (PDF) | Print | WhatsApp
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Button(
-                        onClick = { showPaymentDialog = true },
+                        onClick = {
+                            payDateMillis = System.currentTimeMillis()
+                            showPaymentDialog = true
+                        },
                         modifier = Modifier
-                            .weight(1.2f)
+                            .weight(1.1f)
                             .testTag("record_payment_button"),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("+ Payment", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("+ Pay", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = { showPdfViewerDialog = true },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("view_ledger_pdf_button"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
+                    ) {
+                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("View", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                     }
 
                     OutlinedButton(
@@ -257,12 +289,13 @@ fun CustomerLedgerScreen(
                                 company = company
                             )
                         },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
+                        modifier = Modifier.weight(0.95f),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF0284C7))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Print", fontSize = 13.sp, color = Color(0xFF0284C7))
+                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF0284C7))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Print", fontSize = 12.sp, color = Color(0xFF0284C7))
                     }
 
                     OutlinedButton(
@@ -277,12 +310,13 @@ fun CustomerLedgerScreen(
                                 company = company
                             )
                         },
-                        modifier = Modifier.weight(1.1f),
-                        shape = RoundedCornerShape(10.dp)
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF25D366))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("WhatsApp", fontSize = 13.sp, color = Color(0xFF16A34A))
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF25D366))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Share", fontSize = 12.sp, color = Color(0xFF16A34A))
                     }
                 }
             }
@@ -467,6 +501,53 @@ fun CustomerLedgerScreen(
                     )
                     Text("Current Outstanding Due: ${DimensionCalculator.formatCurrency(balance)}", fontSize = 12.sp)
 
+                    // Manual Date Entry / Selection for Payment
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Payment Date:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.clickable {
+                                val cal = java.util.Calendar.getInstance().apply { timeInMillis = payDateMillis }
+                                android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        val newCal = java.util.Calendar.getInstance().apply {
+                                            set(year, month, dayOfMonth)
+                                        }
+                                        payDateMillis = newCal.timeInMillis
+                                    },
+                                    cal.get(java.util.Calendar.YEAR),
+                                    cal.get(java.util.Calendar.MONTH),
+                                    cal.get(java.util.Calendar.DAY_OF_MONTH)
+                                ).show()
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.DateRange,
+                                    contentDescription = "Select Date",
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${DimensionCalculator.formatDate(payDateMillis)} ✎",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
                     OutlinedTextField(
                         value = payAmountStr,
                         onValueChange = { payAmountStr = it },
@@ -519,7 +600,8 @@ fun CustomerLedgerScreen(
                                 amount = amt,
                                 mode = payMode,
                                 reference = payRef.trim(),
-                                notes = payNotes.trim()
+                                notes = payNotes.trim(),
+                                dateMillis = payDateMillis
                             )
                             showPaymentDialog = false
                             payAmountStr = ""
@@ -537,5 +619,160 @@ fun CustomerLedgerScreen(
                 }
             }
         )
+    }
+
+    // PDF Viewer Dialog for Customer Ledger
+    if (showPdfViewerDialog) {
+        Dialog(
+            onDismissRequest = { showPdfViewerDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Dialog Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.primary)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Receipt, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Ledger PDF - ${cust.name}",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 15.sp
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(
+                                onClick = {
+                                    InvoicePrinter.printCustomerLedger(
+                                        context = context,
+                                        customer = cust,
+                                        ledgerEntries = ledgerEntries,
+                                        totalBilled = totalBilled,
+                                        totalPaid = totalPaid,
+                                        balance = balance,
+                                        company = company
+                                    )
+                                }
+                            ) {
+                                Icon(Icons.Default.Print, contentDescription = "Print / Save PDF", tint = Color.White)
+                            }
+                            IconButton(
+                                onClick = {
+                                    ShareHelper.shareLedgerWhatsApp(
+                                        context = context,
+                                        customer = cust,
+                                        ledgerEntries = ledgerEntries,
+                                        totalBilled = totalBilled,
+                                        totalPaid = totalPaid,
+                                        balance = balance,
+                                        company = company
+                                    )
+                                }
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = "WhatsApp", tint = Color(0xFF25D366))
+                            }
+                            IconButton(onClick = { showPdfViewerDialog = false }) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                            }
+                        }
+                    }
+
+                    // Rendered HTML Document (Simulating PDF print preview)
+                    val htmlContent = remember(cust, ledgerEntries, totalBilled, totalPaid, balance, company) {
+                        InvoicePrinter.generateLedgerHtml(
+                            customer = cust,
+                            ledgerEntries = ledgerEntries,
+                            totalBilled = totalBilled,
+                            totalPaid = totalPaid,
+                            balance = balance,
+                            company = company
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(Color(0xFFE2E8F0))
+                            .padding(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.fillMaxSize(),
+                            shape = RoundedCornerShape(8.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White)
+                        ) {
+                            AndroidView(
+                                factory = { ctx ->
+                                    android.webkit.WebView(ctx).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.builtInZoomControls = true
+                                        settings.displayZoomControls = false
+                                        settings.loadWithOverviewMode = true
+                                        settings.useWideViewPort = true
+                                        loadDataWithBaseURL(null, htmlContent, "text/html", "utf-8", null)
+                                    }
+                                },
+                                update = { webView ->
+                                    webView.loadDataWithBaseURL(null, htmlContent, "text/html", "utf-8", null)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+
+                    // Bottom Buttons
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "A4 PDF Statement Preview",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { showPdfViewerDialog = false }) {
+                                Text("Close")
+                            }
+                            Button(
+                                onClick = {
+                                    InvoicePrinter.printCustomerLedger(
+                                        context = context,
+                                        customer = cust,
+                                        ledgerEntries = ledgerEntries,
+                                        totalBilled = totalBilled,
+                                        totalPaid = totalPaid,
+                                        balance = balance,
+                                        company = company
+                                    )
+                                }
+                            ) {
+                                Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save PDF / Print")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

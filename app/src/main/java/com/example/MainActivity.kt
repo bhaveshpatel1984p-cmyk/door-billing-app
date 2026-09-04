@@ -31,6 +31,7 @@ import com.example.ui.screens.EditEntryScreen
 import com.example.ui.screens.FinancialStatsScreen
 import com.example.ui.screens.InvoiceViewDialog
 import com.example.ui.screens.NewEntryScreen
+import com.example.ui.screens.PurchaseHubScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
@@ -133,6 +134,10 @@ fun DoorBillingMainApp(
 
         AppScreen.FINANCIAL_STATS -> {
           FinancialStatsScreen(viewModel = viewModel)
+        }
+
+        AppScreen.PURCHASE_HUB -> {
+          PurchaseHubScreen(viewModel = viewModel)
         }
       }
 

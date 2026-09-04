@@ -115,3 +115,93 @@ interface CompanyProfileDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateCompanyProfile(profile: CompanyProfileEntity)
 }
+
+@Dao
+interface SupplierDao {
+    @Query("SELECT * FROM suppliers ORDER BY name ASC")
+    fun getAllSuppliers(): Flow<List<SupplierEntity>>
+
+    @Query("SELECT * FROM suppliers WHERE id = :id")
+    suspend fun getSupplierById(id: Long): SupplierEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSupplier(supplier: SupplierEntity): Long
+
+    @Update
+    suspend fun updateSupplier(supplier: SupplierEntity)
+
+    @Delete
+    suspend fun deleteSupplier(supplier: SupplierEntity)
+
+    @Query("SELECT * FROM suppliers WHERE name LIKE '%' || :query || '%' OR mobile LIKE '%' || :query || '%'")
+    fun searchSuppliers(query: String): Flow<List<SupplierEntity>>
+
+    @Query("SELECT COUNT(*) FROM suppliers")
+    suspend fun getSuppliersCount(): Int
+}
+
+@Dao
+interface PurchaseDao {
+    @Transaction
+    @Query("SELECT * FROM purchases ORDER BY dateMillis DESC, id DESC")
+    fun getAllPurchasesWithItems(): Flow<List<PurchaseWithItems>>
+
+    @Transaction
+    @Query("SELECT * FROM purchases WHERE supplierId = :supplierId ORDER BY dateMillis DESC, id DESC")
+    fun getPurchasesBySupplier(supplierId: Long): Flow<List<PurchaseWithItems>>
+
+    @Transaction
+    @Query("SELECT * FROM purchases WHERE id = :purchaseId")
+    suspend fun getPurchaseWithItemsById(purchaseId: Long): PurchaseWithItems?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPurchase(purchase: PurchaseEntity): Long
+
+    @Update
+    suspend fun updatePurchase(purchase: PurchaseEntity)
+
+    @Query("DELETE FROM purchases WHERE id = :purchaseId")
+    suspend fun deletePurchaseById(purchaseId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPurchaseItems(items: List<PurchaseItemEntity>)
+
+    @Query("DELETE FROM purchase_items WHERE purchaseId = :purchaseId")
+    suspend fun deleteItemsByPurchaseId(purchaseId: Long)
+
+    @Transaction
+    suspend fun savePurchaseWithItems(purchase: PurchaseEntity, items: List<PurchaseItemEntity>): Long {
+        val purchaseId = if (purchase.id == 0L) {
+            insertPurchase(purchase)
+        } else {
+            updatePurchase(purchase)
+            deleteItemsByPurchaseId(purchase.id)
+            purchase.id
+        }
+        val itemsWithId = items.map { it.copy(purchaseId = purchaseId) }
+        insertPurchaseItems(itemsWithId)
+        return purchaseId
+    }
+
+    @Query("SELECT COUNT(*) FROM purchases")
+    suspend fun getTotalPurchasesCount(): Int
+}
+
+@Dao
+interface PurchasePaymentDao {
+    @Query("SELECT * FROM purchase_payments WHERE supplierId = :supplierId ORDER BY dateMillis DESC, id DESC")
+    fun getPaymentsBySupplier(supplierId: Long): Flow<List<PurchasePaymentEntity>>
+
+    @Query("SELECT * FROM purchase_payments ORDER BY dateMillis DESC")
+    fun getAllPayments(): Flow<List<PurchasePaymentEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPayment(payment: PurchasePaymentEntity): Long
+
+    @Delete
+    suspend fun deletePayment(payment: PurchasePaymentEntity)
+
+    @Query("DELETE FROM purchase_payments WHERE id = :paymentId")
+    suspend fun deletePaymentById(paymentId: Long)
+}
+

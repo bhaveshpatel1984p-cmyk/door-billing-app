@@ -42,6 +42,7 @@ data class BillEntity(
     val discountAmount: Double = 0.0,
     val otherCharges: Double = 0.0,
     val otherChargesDescription: String = "Cutting Charges",
+    val roundOffAmount: Double = 0.0,
     val grandTotal: Double = 0.0,
     val paidAmount: Double = 0.0,
     val notes: String = "",
@@ -166,3 +167,141 @@ sealed class LedgerEntry {
         override val creditAmount: Double = payment.amount
     }
 }
+
+@Entity(tableName = "suppliers")
+data class SupplierEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val name: String,
+    val mobile: String = "",
+    val address: String = "",
+    val gstNo: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "purchases",
+    indices = [Index(value = ["supplierId"])]
+)
+data class PurchaseEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val invoiceNo: String,
+    val supplierId: Long,
+    val supplierName: String,
+    val supplierMobile: String = "",
+    val supplierAddress: String = "",
+    val supplierGstNo: String = "",
+    val dateMillis: Long = System.currentTimeMillis(),
+    val dimensionUnit: String = "Inches",
+    val taxRate: Double = 18.0,
+    val isGstIncluded: Boolean = true,
+    val subTotal: Double = 0.0,
+    val cgstAmount: Double = 0.0,
+    val sgstAmount: Double = 0.0,
+    val igstAmount: Double = 0.0,
+    val discountAmount: Double = 0.0,
+    val otherCharges: Double = 0.0,
+    val otherChargesDescription: String = "Transportation",
+    val roundOffAmount: Double = 0.0,
+    val grandTotal: Double = 0.0,
+    val paidAmount: Double = 0.0,
+    val notes: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "purchase_items",
+    foreignKeys = [
+        ForeignKey(
+            entity = PurchaseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["purchaseId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["purchaseId"])]
+)
+data class PurchaseItemEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val purchaseId: Long = 0,
+    val slNo: Int,
+    val particular: String,
+    val hsnSac: String = "4418",
+    val height: Double = 0.0,
+    val width: Double = 0.0,
+    val qty: Int = 1,
+    val sqFt: Double = 0.0,
+    val rate: Double = 0.0,
+    val amount: Double = 0.0
+)
+
+@Entity(
+    tableName = "purchase_payments",
+    indices = [Index(value = ["supplierId"])]
+)
+data class PurchasePaymentEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val supplierId: Long,
+    val supplierName: String,
+    val purchaseId: Long? = null,
+    val amount: Double,
+    val dateMillis: Long = System.currentTimeMillis(),
+    val paymentMode: String = "Bank Transfer",
+    val referenceNo: String = "",
+    val notes: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+data class PurchaseWithItems(
+    @Embedded val purchase: PurchaseEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "purchaseId"
+    )
+    val items: List<PurchaseItemEntity>
+)
+
+data class SupplierBalanceSummary(
+    val supplier: SupplierEntity,
+    val totalPurchased: Double,
+    val totalPaid: Double,
+    val balance: Double, // totalPurchased - totalPaid
+    val billCount: Int,
+    val paymentCount: Int,
+    val lastTransactionDate: Long
+)
+
+sealed class SupplierLedgerEntry {
+    abstract val id: Long
+    abstract val dateMillis: Long
+    abstract val description: String
+    abstract val debitAmount: Double // Payment made to supplier (reduces balance)
+    abstract val creditAmount: Double // Purchase invoice (increases balance)
+
+    data class PurchaseBillEntry(
+        override val id: Long,
+        override val dateMillis: Long,
+        val invoiceNo: String,
+        val grandTotal: Double,
+        val itemsCount: Int,
+        val purchaseWithItems: PurchaseWithItems
+    ) : SupplierLedgerEntry() {
+        override val description: String = "Purchase Bill #$invoiceNo ($itemsCount items)"
+        override val debitAmount: Double = 0.0
+        override val creditAmount: Double = grandTotal
+    }
+
+    data class PaymentRecord(
+        override val id: Long,
+        override val dateMillis: Long,
+        val payment: PurchasePaymentEntity
+    ) : SupplierLedgerEntry() {
+        override val description: String = "Payment Made (${payment.paymentMode}${if (payment.referenceNo.isNotBlank()) " - Ref: " + payment.referenceNo else ""})"
+        override val debitAmount: Double = payment.amount
+        override val creditAmount: Double = 0.0
+    }
+}
+

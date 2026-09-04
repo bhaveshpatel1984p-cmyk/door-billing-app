@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoorFront
 import androidx.compose.material.icons.filled.Person
@@ -103,6 +104,8 @@ fun NewEntryScreen(
     val discount by viewModel.discountDraft.collectAsStateWithLifecycle()
     val otherCharges by viewModel.otherChargesDraft.collectAsStateWithLifecycle()
     val otherChargesDesc by viewModel.otherChargesDescDraft.collectAsStateWithLifecycle()
+    val isRoundOffAuto by viewModel.isRoundOffAutoDraft.collectAsStateWithLifecycle()
+    val manualRoundOff by viewModel.roundOffDraft.collectAsStateWithLifecycle()
     val paidAmount by viewModel.paidAmountDraft.collectAsStateWithLifecycle()
     val notes by viewModel.notesDraft.collectAsStateWithLifecycle()
     val items by viewModel.billItemsDraft.collectAsStateWithLifecycle()
@@ -142,7 +145,14 @@ fun NewEntryScreen(
     val totalSqFt = items.sumOf { it.sqFt }
     val totalQty = items.sumOf { it.qty }
     val gstAmount = if (isGstIncluded && taxRate > 0) (subTotal * taxRate / 100.0) else 0.0
-    val grandTotal = Math.max(0.0, (subTotal + gstAmount + otherCharges) - discount)
+    val rawGrandTotal = Math.max(0.0, (subTotal + gstAmount + otherCharges) - discount)
+    val roundOffAmount = if (isRoundOffAuto) {
+        val rounded = Math.round(rawGrandTotal).toDouble()
+        rounded - rawGrandTotal
+    } else {
+        manualRoundOff
+    }
+    val grandTotal = Math.max(0.0, rawGrandTotal + roundOffAmount)
 
     Scaffold(
         topBar = {
@@ -305,10 +315,45 @@ fun NewEntryScreen(
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             )
-                            Text(
-                                text = "Date: ${DimensionCalculator.formatDate(billDateMillis)}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                modifier = Modifier.clickable {
+                                    val cal = java.util.Calendar.getInstance().apply { timeInMillis = billDateMillis }
+                                    android.app.DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            val newCal = java.util.Calendar.getInstance().apply {
+                                                set(year, month, dayOfMonth)
+                                            }
+                                            viewModel.setBillDate(newCal.timeInMillis)
+                                        },
+                                        cal.get(java.util.Calendar.YEAR),
+                                        cal.get(java.util.Calendar.MONTH),
+                                        cal.get(java.util.Calendar.DAY_OF_MONTH)
+                                    ).show()
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.DateRange,
+                                        contentDescription = "Select Date",
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "${DimensionCalculator.formatDate(billDateMillis)} ✎",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                }
+                            }
                         }
 
                         Row(
@@ -428,7 +473,7 @@ fun NewEntryScreen(
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            listOf("Flush Door 30mm", "Flush Door 35mm", "Teak Wood Door", "Panel Door", "Laminated Door", "Moulded Door", "Pine Wood Door").forEach { suggestion ->
+                            listOf("Lamination Door", "Lamination Door 30mm", "Flush Door 30mm", "Flush Door 35mm", "Teak Wood Door", "Panel Door", "Laminated Door", "Moulded Door", "Pine Wood Door").forEach { suggestion ->
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -773,6 +818,31 @@ fun NewEntryScreen(
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            // Round Off Option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Switch(
+                                        checked = isRoundOffAuto,
+                                        onCheckedChange = { viewModel.isRoundOffAutoDraft.value = it },
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                    Text("Auto Round Off Total", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                Text(
+                                    text = (if (roundOffAmount >= 0) "+ " else "- ") + DimensionCalculator.formatCurrency(Math.abs(roundOffAmount)),
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (roundOffAmount != 0.0) Color(0xFF0284C7) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
 

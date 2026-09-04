@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -229,7 +230,7 @@ fun DashboardScreen(
             }
         }
 
-        // 7) Exit
+        // 7) Purchase Entry & 8) Exit
         item {
             Row(
                 modifier = Modifier
@@ -238,7 +239,17 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DashboardActionButton(
-                    title = "7) Exit",
+                    title = "7) Purchase Entry",
+                    subtitle = "Suppliers, Bills & Dues",
+                    icon = Icons.Default.ShoppingCart,
+                    iconBgColor = Color(0xFF0F766E),
+                    testTag = "purchase_hub_button",
+                    modifier = Modifier.weight(1f),
+                    onClick = { viewModel.navigateTo(AppScreen.PURCHASE_HUB) }
+                )
+
+                DashboardActionButton(
+                    title = "8) Exit",
                     subtitle = "Close Application",
                     icon = Icons.AutoMirrored.Filled.ExitToApp,
                     iconBgColor = Color(0xFF475569),
@@ -246,8 +257,6 @@ fun DashboardScreen(
                     modifier = Modifier.weight(1f),
                     onClick = { showExitDialog = true }
                 )
-
-                Spacer(modifier = Modifier.weight(1f))
             }
         }
 

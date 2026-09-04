@@ -427,4 +427,127 @@ object InvoicePrinter {
         </html>
         """.trimIndent()
     }
+
+    fun printSupplierLedger(
+        context: Context,
+        supplier: com.example.data.db.SupplierEntity,
+        ledgerEntries: List<com.example.data.db.SupplierLedgerEntry>,
+        totalPurchased: Double,
+        totalPaid: Double,
+        balance: Double,
+        company: CompanyProfileEntity
+    ) {
+        val htmlContent = generateSupplierLedgerHtml(supplier, ledgerEntries, totalPurchased, totalPaid, balance, company)
+        printHtml(context, htmlContent, "SupplierLedger_${supplier.name.replace(" ", "_")}")
+    }
+
+    fun generateSupplierLedgerHtml(
+        supplier: com.example.data.db.SupplierEntity,
+        ledgerEntries: List<com.example.data.db.SupplierLedgerEntry>,
+        totalPurchased: Double,
+        totalPaid: Double,
+        balance: Double,
+        company: CompanyProfileEntity
+    ): String {
+        var runningBal = 0.0
+        val rows = ledgerEntries.joinToString("") { entry ->
+            runningBal += (entry.creditAmount - entry.debitAmount)
+            val debitStr = if (entry.debitAmount > 0) "₹${String.format(java.util.Locale.US, "%.2f", entry.debitAmount)}" else "-"
+            val creditStr = if (entry.creditAmount > 0) "₹${String.format(java.util.Locale.US, "%.2f", entry.creditAmount)}" else "-"
+            """
+            <tr>
+                <td style="text-align:center; padding:6px; border:1px solid #ccc;">${DimensionCalculator.formatDate(entry.dateMillis)}</td>
+                <td style="padding:6px; border:1px solid #ccc; font-weight:500;">${entry.description}</td>
+                <td style="text-align:right; padding:6px; border:1px solid #ccc; color:#0f766e; font-weight:bold;">$creditStr</td>
+                <td style="text-align:right; padding:6px; border:1px solid #ccc; color:#16a34a; font-weight:bold;">$debitStr</td>
+                <td style="text-align:right; padding:6px; border:1px solid #ccc; font-weight:bold; background-color:#f8fafc;">₹${String.format(java.util.Locale.US, "%.2f", runningBal)}</td>
+            </tr>
+            """.trimIndent()
+        }
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Supplier Ledger - ${supplier.name}</title>
+            <style>
+                @page { size: A4; margin: 15mm; }
+                body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
+                .container { border: 2px solid #0f766e; padding: 0; }
+                .header { background-color:#0f766e; color:white; padding:12px; text-align:center; }
+                .info-table { width:100%; border-collapse:collapse; border-bottom:1px solid #333; }
+                .info-table td { padding:8px 12px; vertical-align:top; }
+                .ledger-table { width:100%; border-collapse:collapse; }
+                .ledger-table th { background-color:#f0fdfa; color:#0f766e; padding:8px 6px; border:1px solid #0f766e; text-align:center; font-size:10.5px; }
+                .summary-box { background-color:#f8fafc; padding:10px 14px; display:flex; justify-content:space-between; border-top:2px solid #0f766e; font-size:12px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2 style="margin:0; font-size:18px; text-transform:uppercase;">${company.businessName}</h2>
+                    <div style="font-size:11px; margin-top:2px;">${company.address} | GST: ${company.gstNo} | Mobile: ${company.mobile}</div>
+                    <div style="font-size:13px; font-weight:bold; margin-top:6px; letter-spacing:1px; background-color:rgba(255,255,255,0.2); padding:3px 0; border-radius:3px;">
+                        SUPPLIER / VENDOR ACCOUNT STATEMENT / LEDGER
+                    </div>
+                </div>
+
+                <table class="info-table">
+                    <tr>
+                        <td style="width:60%;">
+                            <div style="font-weight:bold; color:#0f766e;">SUPPLIER / PARTY:</div>
+                            <div style="font-size:14px; font-weight:bold; margin-top:2px;">${supplier.name}</div>
+                            <div>Mobile: ${supplier.mobile.ifBlank { "N/A" }}</div>
+                            <div>Address: ${supplier.address.ifBlank { "N/A" }}</div>
+                            <div>GSTIN: ${supplier.gstNo.ifBlank { "Unregistered" }}</div>
+                        </td>
+                        <td style="width:40%; text-align:right; border-left:1px solid #ddd;">
+                            <div><strong>Statement Date:</strong> ${DimensionCalculator.formatDate(System.currentTimeMillis())}</div>
+                            <div style="margin-top:4px;"><strong>Total Purchased:</strong> ₹${String.format(java.util.Locale.US, "%.2f", totalPurchased)}</div>
+                            <div><strong>Total Paid Out:</strong> ₹${String.format(java.util.Locale.US, "%.2f", totalPaid)}</div>
+                            <div style="font-size:13px; font-weight:bold; color:${if (balance > 0) "#dc2626" else "#16a34a"}; margin-top:4px;">
+                                Net Balance Due: ₹${String.format(java.util.Locale.US, "%.2f", balance)}
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+
+                <table class="ledger-table">
+                    <thead>
+                        <tr>
+                            <th style="width:15%;">Date</th>
+                            <th style="width:45%;">Particulars / Description</th>
+                            <th style="width:13%;">Purchase (Credit ₹)</th>
+                            <th style="width:13%;">Paid Out (Debit ₹)</th>
+                            <th style="width:14%;">Balance Due (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        $rows
+                    </tbody>
+                </table>
+
+                <div class="summary-box">
+                    <div><strong>Total Purchased:</strong> ₹${String.format(java.util.Locale.US, "%.2f", totalPurchased)}</div>
+                    <div><strong>Total Paid Out:</strong> ₹${String.format(java.util.Locale.US, "%.2f", totalPaid)}</div>
+                    <div style="color:${if (balance > 0) "#dc2626" else "#16a34a"}; font-weight:bold; font-size:13px;">
+                        <strong>Net Due Balance:</strong> ₹${String.format(java.util.Locale.US, "%.2f", balance)}
+                    </div>
+                </div>
+
+                <div style="padding:16px 12px; display:flex; justify-content:space-between; align-items:flex-end; font-size:10px; color:#555;">
+                    <div>
+                        Statement generated by <strong>${company.businessName}</strong>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="margin-bottom:30px;">For ${company.businessName}</div>
+                        <div style="border-top:1px dashed #777; padding-top:2px;">Authorized Signatory</div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """.trimIndent()
+    }
 }
