@@ -24,6 +24,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Receipt
@@ -62,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -69,6 +73,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.db.BillWithItems
 import com.example.data.db.LedgerEntry
+import com.example.data.db.PaymentEntity
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
 import com.example.util.DimensionCalculator
@@ -93,6 +98,13 @@ fun CustomerLedgerScreen(
     var payRef by remember { mutableStateOf("") }
     var payNotes by remember { mutableStateOf("") }
     var payDateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var editingPayment by remember { mutableStateOf<PaymentEntity?>(null) }
+    var deletingPayment by remember { mutableStateOf<PaymentEntity?>(null) }
+
+    val allBills by viewModel.allBills.collectAsStateWithLifecycle()
+    var showLedgerShareOptions by remember { mutableStateOf(false) }
+    var selectedBillForShare by remember { mutableStateOf<BillWithItems?>(null) }
+    var selectedBillForViewModal by remember { mutableStateOf<BillWithItems?>(null) }
 
     if (customer == null) {
         viewModel.navigateTo(AppScreen.CUSTOMER_BALANCE)
@@ -141,21 +153,11 @@ fun CustomerLedgerScreen(
                         Icon(Icons.Default.Print, contentDescription = "Print Ledger", tint = Color.White)
                     }
 
-                    // WhatsApp Button in TopBar
+                    // Share Button in TopBar
                     IconButton(
-                        onClick = {
-                            ShareHelper.shareLedgerWhatsApp(
-                                context = context,
-                                customer = cust,
-                                ledgerEntries = ledgerEntries,
-                                totalBilled = totalBilled,
-                                totalPaid = totalPaid,
-                                balance = balance,
-                                company = company
-                            )
-                        }
+                        onClick = { showLedgerShareOptions = true }
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = "Share WhatsApp", tint = Color(0xFF25D366))
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color(0xFF25D366))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -185,12 +187,15 @@ fun CustomerLedgerScreen(
                         modifier = Modifier.padding(16.dp)
                     ) {
                         Text(
-                            text = cust.name,
+                            text = cust.primaryTitle,
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         )
+                        if (!cust.subtitle.isNullOrBlank()) {
+                            Text("👤 Contact Person: ${cust.subtitle}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        }
                         if (cust.mobile.isNotBlank()) {
                             Text("📞 Mobile: ${cust.mobile}", style = MaterialTheme.typography.bodyMedium)
                         }
@@ -299,17 +304,7 @@ fun CustomerLedgerScreen(
                     }
 
                     OutlinedButton(
-                        onClick = {
-                            ShareHelper.shareLedgerWhatsApp(
-                                context = context,
-                                customer = cust,
-                                ledgerEntries = ledgerEntries,
-                                totalBilled = totalBilled,
-                                totalPaid = totalPaid,
-                                balance = balance,
-                                company = company
-                            )
-                        },
+                        onClick = { showLedgerShareOptions = true },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
@@ -414,6 +409,96 @@ fun CustomerLedgerScreen(
                                         )
                                     }
                                 }
+
+                                val billWithItems = entry.billWithItems
+                                Spacer(modifier = Modifier.height(6.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // View Button
+                                    TextButton(
+                                        onClick = {
+                                            if (billWithItems != null) {
+                                                selectedBillForViewModal = billWithItems
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Visibility,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(15.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "View",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(4.dp))
+
+                                    // Print Button
+                                    TextButton(
+                                        onClick = {
+                                            if (billWithItems != null) {
+                                                InvoicePrinter.printInvoice(context, billWithItems, company)
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Print,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(15.dp),
+                                            tint = Color(0xFF0284C7)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "Print",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF0284C7)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(4.dp))
+
+                                    // Share Button
+                                    TextButton(
+                                        onClick = {
+                                            if (billWithItems != null) {
+                                                selectedBillForShare = billWithItems
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Share,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(15.dp),
+                                            tint = Color(0xFF25D366)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "Share",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF16A34A)
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -423,60 +508,126 @@ fun CustomerLedgerScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
                             ) {
-                                Row(
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                        .padding(12.dp)
                                 ) {
                                     Row(
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f)
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Color(0xFFDCFCE7),
-                                            modifier = Modifier.size(36.dp)
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
                                         ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    Icons.Default.Payment,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFF16A34A),
-                                                    modifier = Modifier.size(20.dp)
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = Color(0xFFDCFCE7),
+                                                modifier = Modifier.size(36.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        Icons.Default.Payment,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF16A34A),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.width(10.dp))
+
+                                            Column {
+                                                Text(
+                                                    text = "Payment Received (${entry.payment.paymentMode})",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp
+                                                )
+                                                Text(
+                                                    text = "${DimensionCalculator.formatDate(entry.dateMillis)}${if (entry.payment.referenceNo.isNotBlank()) " • Ref: " + entry.payment.referenceNo else ""}",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.width(10.dp))
-
-                                        Column {
+                                        Column(horizontalAlignment = Alignment.End) {
                                             Text(
-                                                text = "Payment Received (${entry.payment.paymentMode})",
+                                                text = "- " + DimensionCalculator.formatCurrency(entry.creditAmount),
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp
+                                                fontSize = 14.sp,
+                                                color = Color(0xFF16A34A)
                                             )
                                             Text(
-                                                text = "${DimensionCalculator.formatDate(entry.dateMillis)}${if (entry.payment.referenceNo.isNotBlank()) " • Ref: " + entry.payment.referenceNo else ""}",
-                                                fontSize = 11.sp,
+                                                text = "Received (Credit)",
+                                                fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
 
-                                    Column(horizontalAlignment = Alignment.End) {
+                                    if (entry.payment.notes.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "- " + DimensionCalculator.formatCurrency(entry.creditAmount),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = Color(0xFF16A34A)
-                                        )
-                                        Text(
-                                            text = "Received (Credit)",
-                                            fontSize = 10.sp,
+                                            text = "Note: ${entry.payment.notes}",
+                                            fontSize = 11.5.sp,
+                                            fontStyle = FontStyle.Italic,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = { editingPayment = entry.payment },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Edit,
+                                                contentDescription = "Edit Payment",
+                                                modifier = Modifier.size(15.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                "Edit Payment",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(6.dp))
+
+                                        TextButton(
+                                            onClick = { deletingPayment = entry.payment },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.DeleteOutline,
+                                                contentDescription = "Delete Payment",
+                                                modifier = Modifier.size(15.dp),
+                                                tint = MaterialTheme.colorScheme.error
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                "Delete",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -621,6 +772,61 @@ fun CustomerLedgerScreen(
         )
     }
 
+    // Edit Payment Dialog
+    if (editingPayment != null) {
+        val p = editingPayment!!
+        EditCustomerPaymentDialog(
+            payment = p,
+            customerName = cust.name,
+            onDismiss = { editingPayment = null },
+            onSave = { updatedAmount, updatedMode, updatedRef, updatedNotes, updatedDateMillis ->
+                viewModel.updateCustomerPayment(
+                    paymentId = p.id,
+                    customerId = cust.id,
+                    customerName = cust.name,
+                    amount = updatedAmount,
+                    mode = updatedMode,
+                    reference = updatedRef,
+                    notes = updatedNotes,
+                    dateMillis = updatedDateMillis
+                ) {
+                    editingPayment = null
+                }
+            }
+        )
+    }
+
+    // Delete Payment Confirmation Dialog
+    if (deletingPayment != null) {
+        val p = deletingPayment!!
+        AlertDialog(
+            onDismissRequest = { deletingPayment = null },
+            title = { Text("Delete Payment Entry?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to delete this payment of ${DimensionCalculator.formatCurrency(p.amount)} (${p.paymentMode}) recorded on ${DimensionCalculator.formatDate(p.dateMillis)}?\n\nThe customer's due balance will increase accordingly."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteCustomerPayment(p.id) {
+                            deletingPayment = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingPayment = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     // PDF Viewer Dialog for Customer Ledger
     if (showPdfViewerDialog) {
         Dialog(
@@ -671,19 +877,9 @@ fun CustomerLedgerScreen(
                                 Icon(Icons.Default.Print, contentDescription = "Print / Save PDF", tint = Color.White)
                             }
                             IconButton(
-                                onClick = {
-                                    ShareHelper.shareLedgerWhatsApp(
-                                        context = context,
-                                        customer = cust,
-                                        ledgerEntries = ledgerEntries,
-                                        totalBilled = totalBilled,
-                                        totalPaid = totalPaid,
-                                        balance = balance,
-                                        company = company
-                                    )
-                                }
+                                onClick = { showLedgerShareOptions = true }
                             ) {
-                                Icon(Icons.Default.Share, contentDescription = "WhatsApp", tint = Color(0xFF25D366))
+                                Icon(Icons.Default.Share, contentDescription = "Share Options", tint = Color(0xFF25D366))
                             }
                             IconButton(onClick = { showPdfViewerDialog = false }) {
                                 Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
@@ -775,4 +971,221 @@ fun CustomerLedgerScreen(
             }
         }
     }
+
+    // Ledger Share Options Dialog (System Chooser, WhatsApp, WhatsApp Business, Text, Print)
+    if (showLedgerShareOptions) {
+        ShareOptionsDialog(
+            title = "Share Account Statement",
+            subtitle = "${cust.name} • Balance: ₹${String.format(java.util.Locale.US, "%.2f", balance)}",
+            onDismiss = { showLedgerShareOptions = false },
+            onShareWhatsApp = {
+                ShareHelper.shareLedgerPdfWhatsApp(
+                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                )
+            },
+            onShareWhatsAppBusiness = {
+                ShareHelper.shareLedgerPdfWhatsAppBusiness(
+                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                )
+            },
+            onSharePdf = {
+                ShareHelper.shareLedgerPdfGeneral(
+                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                )
+            },
+            onShareText = {
+                ShareHelper.shareLedgerTextGeneral(
+                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                )
+            },
+            onPrint = {
+                InvoicePrinter.printCustomerLedger(
+                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                )
+            }
+        )
+    }
+
+    // Invoice Share Options Dialog
+    if (selectedBillForShare != null) {
+        val b = selectedBillForShare!!
+        ShareOptionsDialog(
+            title = "Share Tax Invoice",
+            subtitle = "Invoice #${b.bill.invoiceNo} • ${b.bill.customerName}",
+            onDismiss = { selectedBillForShare = null },
+            onShareWhatsApp = {
+                ShareHelper.shareInvoicePdfWhatsApp(context, b, company)
+            },
+            onShareWhatsAppBusiness = {
+                ShareHelper.shareInvoicePdfWhatsAppBusiness(context, b, company)
+            },
+            onSharePdf = {
+                ShareHelper.shareInvoicePdfGeneral(context, b, company)
+            },
+            onShareText = {
+                ShareHelper.shareInvoiceTextGeneral(context, b, company)
+            },
+            onPrint = {
+                InvoicePrinter.printInvoice(context, b, company)
+            }
+        )
+    }
+
+    // Invoice Details View Dialog
+    if (selectedBillForViewModal != null) {
+        InvoiceViewDialog(
+            billWithItems = selectedBillForViewModal!!,
+            company = company,
+            onDismiss = { selectedBillForViewModal = null },
+            onEdit = {
+                val billToEdit = selectedBillForViewModal!!
+                selectedBillForViewModal = null
+                viewModel.startEditBill(billToEdit)
+            }
+        )
+    }
+}
+
+@Composable
+fun EditCustomerPaymentDialog(
+    payment: PaymentEntity,
+    customerName: String,
+    onDismiss: () -> Unit,
+    onSave: (amount: Double, mode: String, reference: String, notes: String, dateMillis: Long) -> Unit
+) {
+    val context = LocalContext.current
+    var editAmountStr by remember { mutableStateOf(payment.amount.toString().removeSuffix(".0")) }
+    var editMode by remember { mutableStateOf(payment.paymentMode) }
+    var editRef by remember { mutableStateOf(payment.referenceNo) }
+    var editNotes by remember { mutableStateOf(payment.notes) }
+    var editDateMillis by remember { mutableStateOf(payment.dateMillis) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Edit Payment Entry", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Customer: $customerName",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 13.sp
+                )
+
+                // Date Picker Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Payment Date:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                        modifier = Modifier.clickable {
+                            val cal = java.util.Calendar.getInstance().apply { timeInMillis = editDateMillis }
+                            android.app.DatePickerDialog(
+                                context,
+                                { _, year, month, dayOfMonth ->
+                                    val newCal = java.util.Calendar.getInstance().apply {
+                                        set(year, month, dayOfMonth)
+                                    }
+                                    editDateMillis = newCal.timeInMillis
+                                },
+                                cal.get(java.util.Calendar.YEAR),
+                                cal.get(java.util.Calendar.MONTH),
+                                cal.get(java.util.Calendar.DAY_OF_MONTH)
+                            ).show()
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.DateRange,
+                                contentDescription = "Select Date",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "${DimensionCalculator.formatDate(editDateMillis)} ✎",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = editAmountStr,
+                    onValueChange = { editAmountStr = it },
+                    label = { Text("Payment Amount (₹) *") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("Payment Mode", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("Cash", "UPI / GPay", "Bank Transfer", "Cheque").forEach { mode ->
+                        FilterChip(
+                            selected = editMode == mode,
+                            onClick = { editMode = mode },
+                            label = { Text(mode, fontSize = 10.5.sp) }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = editRef,
+                    onValueChange = { editRef = it },
+                    label = { Text("Reference / UTR / Cheque No (Optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = editNotes,
+                    onValueChange = { editNotes = it },
+                    label = { Text("Notes (Optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val amt = editAmountStr.toDoubleOrNull() ?: 0.0
+                    if (amt > 0) {
+                        onSave(amt, editMode, editRef.trim(), editNotes.trim(), editDateMillis)
+                    }
+                }
+            ) {
+                Text("Update Payment")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

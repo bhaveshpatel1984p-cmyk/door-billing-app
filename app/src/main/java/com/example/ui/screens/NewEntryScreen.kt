@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoorFront
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Print
@@ -54,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -73,6 +76,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -81,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.db.BillItemEntity
+import com.example.data.db.BillWithItems
 import com.example.data.db.CustomerEntity
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
@@ -107,6 +112,8 @@ fun NewEntryScreen(
     val isRoundOffAuto by viewModel.isRoundOffAutoDraft.collectAsStateWithLifecycle()
     val manualRoundOff by viewModel.roundOffDraft.collectAsStateWithLifecycle()
     val paidAmount by viewModel.paidAmountDraft.collectAsStateWithLifecycle()
+    val previousBalance by viewModel.previousBalanceDraft.collectAsStateWithLifecycle()
+    val includePreviousBalance by viewModel.includePreviousBalanceDraft.collectAsStateWithLifecycle()
     val notes by viewModel.notesDraft.collectAsStateWithLifecycle()
     val items by viewModel.billItemsDraft.collectAsStateWithLifecycle()
     val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
@@ -114,6 +121,7 @@ fun NewEntryScreen(
 
     // Item line inputs
     val particular by viewModel.itemParticularInput.collectAsStateWithLifecycle()
+    val doorSize by viewModel.itemDoorSizeInput.collectAsStateWithLifecycle()
     val hsn by viewModel.itemHsnInput.collectAsStateWithLifecycle()
     val heightStr by viewModel.itemHeightInput.collectAsStateWithLifecycle()
     val widthStr by viewModel.itemWidthInput.collectAsStateWithLifecycle()
@@ -122,10 +130,14 @@ fun NewEntryScreen(
 
     var customerDropdownExpanded by remember { mutableStateOf(false) }
     var showQuickCustomerDialog by remember { mutableStateOf(false) }
+    var quickFirmName by remember { mutableStateOf("") }
     var quickCustomerName by remember { mutableStateOf("") }
     var quickCustomerMobile by remember { mutableStateOf("") }
     var quickCustomerAddress by remember { mutableStateOf("") }
     var quickCustomerGst by remember { mutableStateOf("") }
+    var billSavedShareTarget by remember { mutableStateOf<BillWithItems?>(null) }
+    var showPreviousBalanceDialog by remember { mutableStateOf(false) }
+    var prevBalanceInput by remember { mutableStateOf("") }
 
     // Live calculations for current line item
     val liveHeight = heightStr.toDoubleOrNull() ?: 0.0
@@ -153,6 +165,8 @@ fun NewEntryScreen(
         manualRoundOff
     }
     val grandTotal = Math.max(0.0, rawGrandTotal + roundOffAmount)
+    val effectivePreviousBalance = if (includePreviousBalance) previousBalance else 0.0
+    val netPayable = grandTotal + effectivePreviousBalance
 
     Scaffold(
         topBar = {
@@ -228,7 +242,7 @@ fun NewEntryScreen(
                             onExpandedChange = { customerDropdownExpanded = !customerDropdownExpanded }
                         ) {
                             OutlinedTextField(
-                                value = selectedCustomer?.name ?: "Select Customer *",
+                                value = selectedCustomer?.displayName ?: "Select Customer *",
                                 onValueChange = {},
                                 readOnly = true,
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = customerDropdownExpanded) },
@@ -256,14 +270,17 @@ fun NewEntryScreen(
                                         DropdownMenuItem(
                                             text = {
                                                 Column {
-                                                    Text(cust.name, fontWeight = FontWeight.Bold)
+                                                    Text(cust.primaryTitle, fontWeight = FontWeight.Bold)
+                                                    if (!cust.subtitle.isNullOrBlank()) {
+                                                        Text("👤 Contact: ${cust.subtitle}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    }
                                                     if (cust.mobile.isNotBlank()) {
                                                         Text("📞 ${cust.mobile}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                     }
                                                 }
                                             },
                                             onClick = {
-                                                viewModel.selectedCustomerDraft.value = cust
+                                                viewModel.selectCustomerForBill(cust)
                                                 customerDropdownExpanded = false
                                             }
                                         )
@@ -280,10 +297,111 @@ fun NewEntryScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
-                                    Text("Billed to: ${cust.name}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Text("Billed to: ${cust.primaryTitle}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    if (!cust.subtitle.isNullOrBlank()) Text("👤 Contact Person: ${cust.subtitle}", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                     if (cust.mobile.isNotBlank()) Text("Phone: ${cust.mobile}", fontSize = 12.sp)
                                     if (cust.address.isNotBlank()) Text("Address: ${cust.address}", fontSize = 12.sp)
                                     if (cust.gstNo.isNotBlank()) Text("GSTIN: ${cust.gstNo}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+
+                            if (previousBalance > 0.0) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFFEF3C7),
+                                    border = BorderStroke(1.dp, Color(0xFFF59E0B)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        "Pending Due (Purana Baaki):",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 12.sp,
+                                                        color = Color(0xFF92400E)
+                                                    )
+                                                    Text(
+                                                        DimensionCalculator.formatCurrency(previousBalance),
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        fontSize = 16.sp,
+                                                        color = Color(0xFFB45309)
+                                                    )
+                                                }
+                                                Spacer(Modifier.width(6.dp))
+                                                IconButton(
+                                                    onClick = {
+                                                        prevBalanceInput = String.format(java.util.Locale.US, "%.2f", previousBalance)
+                                                        showPreviousBalanceDialog = true
+                                                    },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Edit,
+                                                        contentDescription = "Edit Old Balance",
+                                                        tint = Color(0xFF92400E),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    if (includePreviousBalance) "Bill me Jodein" else "Mat Jodein",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (includePreviousBalance) Color(0xFF15803D) else Color(0xFF6B7280)
+                                                )
+                                                Switch(
+                                                    checked = includePreviousBalance,
+                                                    onCheckedChange = { viewModel.toggleIncludePreviousBalance(it) }
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            if (includePreviousBalance)
+                                                "✓ Purana baaki is bill ke Kul Net Payable me jod diya gaya hai."
+                                            else
+                                                "✕ Purana baaki is bill me shamil nahi hai (sirf naya bill banega).",
+                                            fontSize = 10.5.sp,
+                                            color = Color(0xFF78350F)
+                                        )
+                                    }
+                                }
+                            } else if (selectedCustomer != null) {
+                                TextButton(
+                                    onClick = {
+                                        prevBalanceInput = ""
+                                        showPreviousBalanceDialog = true
+                                    },
+                                    modifier = Modifier.padding(top = 2.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = "Add Old Balance",
+                                        tint = Color(0xFFB45309),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        "+ Purana Baaki (Old Due Balance) Jodein",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFB45309)
+                                    )
                                 }
                             }
                         }
@@ -443,8 +561,9 @@ fun NewEntryScreen(
                                 value = particular,
                                 onValueChange = { viewModel.itemParticularInput.value = it },
                                 label = { Text("Particular / Item Name *") },
-                                placeholder = { Text("e.g. Flush Door 30mm") },
-                                singleLine = true,
+                                placeholder = { Text("e.g. Lamination Door") },
+                                singleLine = false,
+                                maxLines = 2,
                                 keyboardOptions = KeyboardOptions(
                                     capitalization = KeyboardCapitalization.Words,
                                     imeAction = ImeAction.Next
@@ -464,6 +583,58 @@ fun NewEntryScreen(
                                     .weight(1f)
                                     .testTag("item_hsn_input")
                             )
+                        }
+
+                        // Door Size / Specification (Second Line under Particular)
+                        OutlinedTextField(
+                            value = doorSize,
+                            onValueChange = { viewModel.itemDoorSizeInput.value = it },
+                            label = { Text("Door Size / Remarks (Line 2)") },
+                            placeholder = { Text("e.g. 79*30=2 or 78x32 - 1 pc") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Words,
+                                imeAction = ImeAction.Next
+                            ),
+                            trailingIcon = {
+                                if (doorSize.isNotBlank()) {
+                                    IconButton(onClick = { viewModel.itemDoorSizeInput.value = "" }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("item_door_size_input")
+                        )
+
+                        // Quick size suggestions if dimensions are entered
+                        if (heightStr.isNotBlank() && widthStr.isNotBlank()) {
+                            val h = heightStr.trim()
+                            val w = widthStr.trim()
+                            val q = qtyStr.ifBlank { "1" }.trim()
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Quick Size:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                listOf("$h*$w=$q", "${h}x${w}", "$h*$w").forEach { sizeOpt ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        modifier = Modifier.clickable { viewModel.itemDoorSizeInput.value = sizeOpt }
+                                    ) {
+                                        Text(
+                                            text = "+ $sizeOpt",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
 
                         // Quick Particular suggestions
@@ -640,7 +811,11 @@ fun NewEntryScreen(
                     BillItemCard(
                         item = item,
                         unit = dimensionUnit,
-                        onDelete = { viewModel.removeItemFromBill(index) }
+                        onDelete = { viewModel.removeItemFromBill(index) },
+                        onEdit = {
+                            viewModel.prepareEditItem(item)
+                            viewModel.removeItemFromBill(index)
+                        }
                     )
                 }
             }
@@ -744,16 +919,16 @@ fun NewEntryScreen(
                                 ) {
                                     Text(
                                         text = "Other Charges (Cutting / Transport)",
-                                        fontWeight = FontWeight.SemiBold,
+                                        fontWeight = FontWeight.Bold,
                                         fontSize = 12.5.sp,
-                                        color = Color(0xFF0F172A)
+                                        color = Color.Black
                                     )
                                     if (otherCharges > 0) {
                                         Text(
                                             text = "+ " + DimensionCalculator.formatCurrency(otherCharges),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.5.sp,
-                                            color = Color(0xFF0284C7)
+                                            color = Color.Black
                                         )
                                     }
                                 }
@@ -765,16 +940,40 @@ fun NewEntryScreen(
                                     OutlinedTextField(
                                         value = otherChargesDesc,
                                         onValueChange = { viewModel.otherChargesDescDraft.value = it },
-                                        label = { Text("Charge Name") },
-                                        placeholder = { Text("Cutting Charges") },
+                                        label = { Text("Charge Name", color = Color.Black) },
+                                        placeholder = { Text("Cutting Charges", color = Color.Gray) },
+                                        textStyle = TextStyle(color = Color.Black, fontSize = 14.sp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = Color.Black,
+                                            unfocusedTextColor = Color.Black,
+                                            focusedLabelColor = Color.Black,
+                                            unfocusedLabelColor = Color(0xFF334155),
+                                            focusedPlaceholderColor = Color.Gray,
+                                            unfocusedPlaceholderColor = Color.Gray,
+                                            cursorColor = Color.Black,
+                                            focusedBorderColor = Color(0xFF0F172A),
+                                            unfocusedBorderColor = Color(0xFF94A3B8)
+                                        ),
                                         singleLine = true,
                                         modifier = Modifier.weight(1.3f)
                                     )
                                     OutlinedTextField(
                                         value = if (otherCharges == 0.0) "" else otherCharges.toString(),
                                         onValueChange = { viewModel.otherChargesDraft.value = it.toDoubleOrNull() ?: 0.0 },
-                                        label = { Text("Amount (₹)") },
-                                        placeholder = { Text("0.00") },
+                                        label = { Text("Amount (₹)", color = Color.Black) },
+                                        placeholder = { Text("0.00", color = Color.Gray) },
+                                        textStyle = TextStyle(color = Color.Black, fontSize = 14.sp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = Color.Black,
+                                            unfocusedTextColor = Color.Black,
+                                            focusedLabelColor = Color.Black,
+                                            unfocusedLabelColor = Color(0xFF334155),
+                                            focusedPlaceholderColor = Color.Gray,
+                                            unfocusedPlaceholderColor = Color.Gray,
+                                            cursorColor = Color.Black,
+                                            focusedBorderColor = Color(0xFF0F172A),
+                                            unfocusedBorderColor = Color(0xFF94A3B8)
+                                        ),
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         singleLine = true,
                                         modifier = Modifier.weight(1f)
@@ -788,10 +987,17 @@ fun NewEntryScreen(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     listOf("Cutting Charges", "Transportation", "Loading Charges", "Polish Charges").forEach { chipName ->
+                                        val isSelected = otherChargesDesc.equals(chipName, ignoreCase = true)
                                         FilterChip(
-                                            selected = otherChargesDesc.equals(chipName, ignoreCase = true),
+                                            selected = isSelected,
                                             onClick = { viewModel.otherChargesDescDraft.value = chipName },
-                                            label = { Text(chipName, fontSize = 11.sp) }
+                                            label = { Text(chipName, fontSize = 11.sp, color = if (isSelected) Color.White else Color.Black) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = Color(0xFF0F172A),
+                                                selectedLabelColor = Color.White,
+                                                containerColor = Color.White,
+                                                labelColor = Color.Black
+                                            )
                                         )
                                     }
                                 }
@@ -836,19 +1042,84 @@ fun NewEntryScreen(
                                         onCheckedChange = { viewModel.isRoundOffAutoDraft.value = it },
                                         modifier = Modifier.padding(end = 8.dp)
                                     )
-                                    Text("Auto Round Off Total", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        text = "Auto Round Off Total",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.Black
+                                    )
                                 }
                                 Text(
                                     text = (if (roundOffAmount >= 0) "+ " else "- ") + DimensionCalculator.formatCurrency(Math.abs(roundOffAmount)),
                                     fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (roundOffAmount != 0.0) Color(0xFF0284C7) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = Color.Black
                                 )
                             }
 
                             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                            // Grand Total Box
+                            // Current Bill Total Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Current Bill Total:", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    DimensionCalculator.formatCurrency(grandTotal),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0369A1)
+                                )
+                            }
+
+                            if (previousBalance > 0.0) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (includePreviousBalance) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, if (includePreviousBalance) Color(0xFFF59E0B) else Color(0xFFCBD5E1)),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Switch(
+                                                checked = includePreviousBalance,
+                                                onCheckedChange = { viewModel.toggleIncludePreviousBalance(it) },
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            )
+                                            Column {
+                                                Text(
+                                                    "(+) Previous Balance (Purana Baaki)",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (includePreviousBalance) Color(0xFF92400E) else Color.Gray
+                                                )
+                                                Text(
+                                                    if (includePreviousBalance) "Bill me Jod diya gaya hai" else "Is bill me nahi joda",
+                                                    fontSize = 10.sp,
+                                                    color = if (includePreviousBalance) Color(0xFF78350F) else Color.Gray
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = (if (includePreviousBalance) "+ " else "") + DimensionCalculator.formatCurrency(previousBalance),
+                                            fontSize = 13.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (includePreviousBalance) Color(0xFFB45309) else Color.Gray
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Grand / Net Total Box
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color(0xFF0369A1),
@@ -862,9 +1133,14 @@ fun NewEntryScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column {
-                                        Text("GRAND TOTAL", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         Text(
-                                            text = DimensionCalculator.formatCurrency(grandTotal),
+                                            if (effectivePreviousBalance > 0.0) "TOTAL NET PAYABLE" else "GRAND TOTAL",
+                                            color = Color.White.copy(alpha = 0.85f),
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = DimensionCalculator.formatCurrency(netPayable),
                                             color = Color.White,
                                             fontWeight = FontWeight.ExtraBold,
                                             fontSize = 22.sp
@@ -874,7 +1150,7 @@ fun NewEntryScreen(
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text("Balance Due", color = Color(0xFFFEF3C7), fontSize = 11.sp)
                                         Text(
-                                            text = DimensionCalculator.formatCurrency(Math.max(0.0, grandTotal - paidAmount)),
+                                            text = DimensionCalculator.formatCurrency(Math.max(0.0, netPayable - paidAmount)),
                                             color = Color(0xFFFDE68A),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 16.sp
@@ -884,7 +1160,7 @@ fun NewEntryScreen(
                             }
 
                             Text(
-                                text = "In Words: ${DimensionCalculator.convertToIndianCurrencyWords(grandTotal)}",
+                                text = "In Words: ${DimensionCalculator.convertToIndianCurrencyWords(netPayable)}",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -945,7 +1221,7 @@ fun NewEntryScreen(
                             OutlinedButton(
                                 onClick = {
                                     viewModel.saveCurrentBill { savedBillWithItems ->
-                                        ShareHelper.shareInvoiceWhatsApp(context, savedBillWithItems, company)
+                                        billSavedShareTarget = savedBillWithItems
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
@@ -953,7 +1229,7 @@ fun NewEntryScreen(
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, tint = Color(0xFF25D366))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("WhatsApp", color = Color(0xFF16A34A))
+                                Text("Save & Share", color = Color(0xFF16A34A))
                             }
                         }
                     }
@@ -970,9 +1246,18 @@ fun NewEntryScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
+                        value = quickFirmName,
+                        onValueChange = { quickFirmName = it },
+                        label = { Text("Firm / Business Name *") },
+                        placeholder = { Text("e.g. Shree Ram Hardware") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
                         value = quickCustomerName,
                         onValueChange = { quickCustomerName = it },
-                        label = { Text("Name *") },
+                        label = { Text("Customer Name (Optional)") },
+                        placeholder = { Text("e.g. Ramesh Patel") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -994,7 +1279,7 @@ fun NewEntryScreen(
                     OutlinedTextField(
                         value = quickCustomerGst,
                         onValueChange = { quickCustomerGst = it.uppercase() },
-                        label = { Text("GSTIN") },
+                        label = { Text("GSTIN (Optional)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1003,14 +1288,16 @@ fun NewEntryScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (quickCustomerName.isNotBlank()) {
+                        if (quickFirmName.isNotBlank() || quickCustomerName.isNotBlank()) {
+                            viewModel.customerFirmNameInput.value = quickFirmName
                             viewModel.customerNameInput.value = quickCustomerName
                             viewModel.customerMobileInput.value = quickCustomerMobile
                             viewModel.customerAddressInput.value = quickCustomerAddress
                             viewModel.customerGstInput.value = quickCustomerGst
                             viewModel.saveCustomer { savedCust ->
-                                viewModel.selectedCustomerDraft.value = savedCust
+                                viewModel.selectCustomerForBill(savedCust)
                                 showQuickCustomerDialog = false
+                                quickFirmName = ""
                                 quickCustomerName = ""
                                 quickCustomerMobile = ""
                                 quickCustomerAddress = ""
@@ -1029,13 +1316,80 @@ fun NewEntryScreen(
             }
         )
     }
+
+    // Share Options Dialog after saving bill
+    billSavedShareTarget?.let { b ->
+        ShareOptionsDialog(
+            title = "Share Tax Invoice",
+            subtitle = "Invoice #${b.bill.invoiceNo} • ${b.bill.customerName}",
+            onDismiss = { billSavedShareTarget = null },
+            onShareWhatsApp = {
+                ShareHelper.shareInvoicePdfWhatsApp(context, b, company)
+            },
+            onShareWhatsAppBusiness = {
+                ShareHelper.shareInvoicePdfWhatsAppBusiness(context, b, company)
+            },
+            onSharePdf = {
+                ShareHelper.shareInvoicePdfGeneral(context, b, company)
+            },
+            onShareText = {
+                ShareHelper.shareInvoiceTextGeneral(context, b, company)
+            },
+            onPrint = {
+                InvoicePrinter.printInvoice(context, b, company)
+            }
+        )
+    }
+
+    // Manual Edit / Add Previous Due Balance Dialog
+    if (showPreviousBalanceDialog) {
+        AlertDialog(
+            onDismissRequest = { showPreviousBalanceDialog = false },
+            title = { Text("Previous Due Balance (Purana Baaki)") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Customer ka purana baaki amount darj karein. Yeh amount is bill me jud kar kul Total Due dikhayega.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = prevBalanceInput,
+                        onValueChange = { prevBalanceInput = it },
+                        label = { Text("Purana Baaki Amount (₹)") },
+                        placeholder = { Text("0.00") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val amount = prevBalanceInput.toDoubleOrNull() ?: 0.0
+                        viewModel.setPreviousBalance(amount)
+                        showPreviousBalanceDialog = false
+                    }
+                ) {
+                    Text("Apply (Shamil Karein)")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPreviousBalanceDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun BillItemCard(
     item: BillItemEntity,
     unit: String,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEdit: (() -> Unit)? = null
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -1050,7 +1404,7 @@ fun BillItemCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
                         color = MaterialTheme.colorScheme.primaryContainer,
@@ -1066,23 +1420,49 @@ fun BillItemCard(
                         }
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = item.particular,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleSmall
-                    )
+                    val partLines = item.particular.split("\n")
+                    Column {
+                        Text(
+                            text = partLines[0].trim(),
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        if (partLines.size > 1 && partLines[1].isNotBlank()) {
+                            Text(
+                                text = partLines[1].trim(),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
 
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "Delete item",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(18.dp)
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onEdit != null) {
+                        IconButton(
+                            onClick = onEdit,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit item",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete item",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 

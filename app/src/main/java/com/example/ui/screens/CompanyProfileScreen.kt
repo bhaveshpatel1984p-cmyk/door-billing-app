@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DoorBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
@@ -37,6 +40,8 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PinDrop
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -51,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -64,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +84,7 @@ import coil.compose.AsyncImage
 import com.example.data.db.CompanyProfileEntity
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
+import com.example.util.QrCodeHelper
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,6 +109,8 @@ fun CompanyProfileScreen(
     var jurisdiction by remember(profileState) { mutableStateOf(profileState.jurisdiction) }
     var declaration by remember(profileState) { mutableStateOf(profileState.declaration) }
     var logoUri by remember(profileState) { mutableStateOf(profileState.logoUri) }
+    var qrCodeUri by remember(profileState) { mutableStateOf(profileState.qrCodeUri) }
+    var upiId by remember(profileState) { mutableStateOf(profileState.upiId) }
 
     // Android Photo Picker for company logo (zero permissions required)
     // Copies image permanently into internal storage to avoid permission revocation
@@ -122,6 +132,25 @@ fun CompanyProfileScreen(
         }
     }
 
+    // Android Photo Picker for Payment QR Code (PhonePe, Google Pay, Paytm, Bank Standee)
+    val qrPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val qrFile = File(context.filesDir, "company_payment_qr.png")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    qrFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                qrCodeUri = qrFile.absolutePath
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -132,6 +161,14 @@ fun CompanyProfileScreen(
                         modifier = Modifier.testTag("back_button")
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { viewModel.navigateTo(AppScreen.BACKUP_SYNC) },
+                        modifier = Modifier.testTag("company_backup_sync_button")
+                    ) {
+                        Icon(Icons.Default.CloudSync, contentDescription = "Backup & Multi-Device Sync")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -434,6 +471,191 @@ fun CompanyProfileScreen(
                 }
             }
 
+            // 4. Payment QR Code & UPI Section (Prints on Bill)
+            item {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                Icons.Default.QrCode2,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "PAYMENT QR CODE & UPI (PRINT ON BILL)",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // QR Preview Box
+                        val activeQrBitmap = remember(qrCodeUri, upiId, businessName) {
+                            if (!qrCodeUri.isNullOrBlank() && File(qrCodeUri!!).exists()) {
+                                try {
+                                    android.graphics.BitmapFactory.decodeFile(qrCodeUri)
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            } else if (upiId.isNotBlank()) {
+                                QrCodeHelper.generateQrBitmap(QrCodeHelper.buildUpiString(upiId, businessName), size = 300)
+                            } else {
+                                null
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(140.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White)
+                                .border(
+                                    2.dp,
+                                    if (activeQrBitmap != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    qrPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (activeQrBitmap != null) {
+                                Image(
+                                    bitmap = activeQrBitmap.asImageBitmap(),
+                                    contentDescription = "Payment QR Code",
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(8.dp)
+                                )
+                            } else {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.QrCode,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "No QR Code",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    Text(
+                                        "Tap to upload",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // QR Status Banner
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (activeQrBitmap != null) Color(0xFFDCFCE7) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        ) {
+                            Text(
+                                text = if (!qrCodeUri.isNullOrBlank()) {
+                                    "✓ Custom QR Image Uploaded (PhonePe/GPay/Bank)"
+                                } else if (upiId.isNotBlank()) {
+                                    "✓ Auto-generating UPI QR from: $upiId"
+                                } else {
+                                    "⚠️ Upload a QR image or enter UPI ID below"
+                                },
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (activeQrBitmap != null) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    qrPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(if (qrCodeUri == null) "Upload QR Code" else "Change QR Image", fontSize = 12.sp)
+                            }
+
+                            if (!qrCodeUri.isNullOrBlank()) {
+                                TextButton(onClick = {
+                                    try {
+                                        File(context.filesDir, "company_payment_qr.png").delete()
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                    qrCodeUri = null
+                                }) {
+                                    Text("Remove Image", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // UPI ID Field
+                        OutlinedTextField(
+                            value = upiId,
+                            onValueChange = { upiId = it.trim() },
+                            label = { Text("UPI ID / VPA (Optional)") },
+                            placeholder = { Text("e.g. nirmaldoor@upi or 9876543210@paytm") },
+                            supportingText = {
+                                Text("If no image is uploaded, bills will auto-generate a scannable UPI QR code using this ID.")
+                            },
+                            leadingIcon = { Icon(Icons.Default.AccountBalance, contentDescription = null) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text(
+                            text = "💡 Scan to Pay: This QR code will appear directly on printed bills, PDF invoices, and ledger statements so customers can quickly pay from PhonePe, GPay, Paytm, or BHIM.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            }
+
             // 4. Legal & Terms Section
             item {
                 ElevatedCard(
@@ -500,7 +722,9 @@ fun CompanyProfileScreen(
                             ifscCode = ifscCode.trim().uppercase(),
                             jurisdiction = jurisdiction.trim(),
                             declaration = declaration.trim(),
-                            logoUri = logoUri
+                            logoUri = logoUri,
+                            qrCodeUri = qrCodeUri,
+                            upiId = upiId.trim()
                         )
                         viewModel.updateCompanyProfile(updated)
                     },
@@ -514,6 +738,52 @@ fun CompanyProfileScreen(
                     Icon(Icons.Default.Save, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Save Company Profile", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
+
+            // 4. Cloud Backup & Multi-Device Sync Shortcut Card
+            item {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.navigateTo(AppScreen.BACKUP_SYNC) }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Google Drive Cloud Backup & Sync",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "Backup database & access on another device",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                        Icon(
+                            Icons.Default.CloudUpload,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }

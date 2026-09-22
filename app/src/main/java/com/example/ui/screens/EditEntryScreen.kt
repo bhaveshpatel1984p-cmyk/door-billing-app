@@ -76,6 +76,7 @@ fun EditEntryScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var billToDelete by remember { mutableStateOf<BillWithItems?>(null) }
+    var billToShare by remember { mutableStateOf<BillWithItems?>(null) }
 
     val filteredBills = remember(allBills, searchQuery) {
         if (searchQuery.isBlank()) allBills
@@ -243,11 +244,29 @@ fun EditEntryScreen(
                             Spacer(modifier = Modifier.height(4.dp))
 
                             // Customer name & mobile
-                            Text(
-                                text = bill.customerName,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                            val rawCust = bill.customerName.trim()
+                            val parenMatch = Regex("^(.*?)\\s*\\((.*?)\\)$").find(rawCust)
+                            if (parenMatch != null) {
+                                val firm = parenMatch.groupValues[1].trim()
+                                val contact = parenMatch.groupValues[2].trim()
+                                Text(
+                                    text = firm,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "👤 Contact: $contact",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Text(
+                                    text = bill.customerName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                             if (bill.customerMobile.isNotBlank()) {
                                 Text(
                                     text = "📞 ${bill.customerMobile}",
@@ -334,12 +353,12 @@ fun EditEntryScreen(
                                     Icon(Icons.Default.Print, contentDescription = "Print", tint = Color(0xFF0284C7))
                                 }
 
-                                // WhatsApp Quick Button
+                                // Share Quick Button
                                 IconButton(
-                                    onClick = { ShareHelper.shareInvoiceWhatsApp(context, billWithItems, company) },
+                                    onClick = { billToShare = billWithItems },
                                     modifier = Modifier.size(36.dp)
                                 ) {
-                                    Icon(Icons.Default.Share, contentDescription = "WhatsApp", tint = Color(0xFF25D366))
+                                    Icon(Icons.Default.Share, contentDescription = "Share Options", tint = Color(0xFF25D366))
                                 }
 
                                 // Delete Button
@@ -377,6 +396,30 @@ fun EditEntryScreen(
                 TextButton(onClick = { billToDelete = null }) {
                     Text("Cancel")
                 }
+            }
+        )
+    }
+
+    // Share Options Dialog
+    billToShare?.let { b ->
+        ShareOptionsDialog(
+            title = "Share Tax Invoice",
+            subtitle = "Invoice #${b.bill.invoiceNo} • ${b.bill.customerName}",
+            onDismiss = { billToShare = null },
+            onShareWhatsApp = {
+                ShareHelper.shareInvoicePdfWhatsApp(context, b, company)
+            },
+            onShareWhatsAppBusiness = {
+                ShareHelper.shareInvoicePdfWhatsAppBusiness(context, b, company)
+            },
+            onSharePdf = {
+                ShareHelper.shareInvoicePdfGeneral(context, b, company)
+            },
+            onShareText = {
+                ShareHelper.shareInvoiceTextGeneral(context, b, company)
+            },
+            onPrint = {
+                InvoicePrinter.printInvoice(context, b, company)
             }
         )
     }

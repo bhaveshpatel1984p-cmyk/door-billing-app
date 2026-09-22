@@ -11,12 +11,26 @@ import androidx.room.Relation
 data class CustomerEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    val name: String,
-    val mobile: String,
-    val address: String,
-    val gstNo: String,
+    val firmName: String = "",
+    val name: String = "",
+    val mobile: String = "",
+    val address: String = "",
+    val gstNo: String = "",
     val createdAt: Long = System.currentTimeMillis()
-)
+) {
+    val displayName: String
+        get() = when {
+            firmName.isNotBlank() && name.isNotBlank() && !firmName.equals(name, ignoreCase = true) -> "$firmName ($name)"
+            firmName.isNotBlank() -> firmName
+            else -> name
+        }
+
+    val primaryTitle: String
+        get() = if (firmName.isNotBlank()) firmName else name
+
+    val subtitle: String?
+        get() = if (firmName.isNotBlank() && name.isNotBlank() && !firmName.equals(name, ignoreCase = true)) name else null
+}
 
 @Entity(
     tableName = "bills",
@@ -44,6 +58,8 @@ data class BillEntity(
     val otherChargesDescription: String = "Cutting Charges",
     val roundOffAmount: Double = 0.0,
     val grandTotal: Double = 0.0,
+    val previousBalance: Double = 0.0,
+    val netPayable: Double = 0.0,
     val paidAmount: Double = 0.0,
     val notes: String = "",
     val createdAt: Long = System.currentTimeMillis()
@@ -111,7 +127,9 @@ data class CompanyProfileEntity(
     val ifscCode: String = "SBIN0001234",
     val jurisdiction: String = "Kudachi",
     val declaration: String = "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct. Goods once sold will not be taken back.",
-    val logoUri: String? = null // Stored local Uri or null to use default vector logo
+    val logoUri: String? = null, // Stored local Uri or null to use default vector logo
+    val qrCodeUri: String? = null, // Stored local Uri for uploaded payment QR code image (PhonePe/GPay/Paytm)
+    val upiId: String = "" // Optional UPI ID (e.g. nirmaldoor@upi) to auto-generate UPI QR code
 )
 
 // Data class with bill + items relation

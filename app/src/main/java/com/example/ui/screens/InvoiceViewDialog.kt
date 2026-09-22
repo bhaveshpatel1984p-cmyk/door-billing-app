@@ -1,12 +1,16 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,13 +38,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,6 +62,7 @@ import com.example.data.db.BillWithItems
 import com.example.data.db.CompanyProfileEntity
 import com.example.util.DimensionCalculator
 import com.example.util.InvoicePrinter
+import com.example.util.QrCodeHelper
 import com.example.util.ShareHelper
 
 @Composable
@@ -65,6 +77,7 @@ fun InvoiceViewDialog(
     val items = billWithItems.items
     val totalSqFt = items.sumOf { it.sqFt }
     val totalQty = items.sumOf { it.qty }
+    var showShareOptions by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -117,55 +130,231 @@ fun InvoiceViewDialog(
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Company Header inside bill
+                    // Company Header inside bill (Matches Reference Layout)
                     item {
+                        val totalQty = items.sumOf { it.qty }
+                        val totalSqFt = items.sumOf { it.sqFt }
+                        val totalWithOldBalance = bill.grandTotal + if (bill.previousBalance > 0.0) bill.previousBalance else 0.0
+                        val netPayableAmount = if (bill.netPayable > 0.0) bill.netPayable else totalWithOldBalance
+                        val payStatus = if (bill.paidAmount >= netPayableAmount) "PAID" else if (bill.paidAmount > 0) "PARTIAL" else "UNPAID"
+
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.5.dp, Color(0xFF0369A1), RoundedCornerShape(8.dp)),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White)
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    AsyncImage(
-                                        model = if (!company.logoUri.isNullOrBlank()) company.logoUri else com.example.R.drawable.img_nirmal_door_logo,
-                                        contentDescription = "Logo",
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(RoundedCornerShape(8.dp))
+                            Column {
+                                // Top Title Bar
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFDCEEF8))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "TAX INVOICE / BILL OF SUPPLY",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF0369A1),
+                                        letterSpacing = 0.5.sp
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
+                                    Text(
+                                        text = "(Door Manufacturing & Joinery Billing)",
+                                        fontSize = 9.5.sp,
+                                        color = Color(0xFF475569),
+                                        fontStyle = FontStyle.Italic
+                                    )
+                                }
+
+                                HorizontalDivider(thickness = 1.5.dp, color = Color(0xFF0369A1))
+
+                                // Row 1: Company Header (Left) & Invoice Meta (Right)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(IntrinsicSize.Min)
+                                ) {
+                                    // Left: Company Info
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1.6f)
+                                            .background(Color(0xFFEEF5F9))
+                                            .padding(10.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            AsyncImage(
+                                                model = if (!company.logoUri.isNullOrBlank()) company.logoUri else com.example.R.drawable.img_nirmal_door_logo,
+                                                contentDescription = "Logo",
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text(
+                                                    text = company.businessName.uppercase(),
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    color = Color(0xFF0369A1)
+                                                )
+                                                Text(
+                                                    text = company.address,
+                                                    fontSize = 9.5.sp,
+                                                    color = Color(0xFF334155),
+                                                    lineHeight = 12.sp
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = company.businessName,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            color = MaterialTheme.colorScheme.primary
+                                            text = "GSTIN: ${company.gstNo} | PAN: ${company.pan}",
+                                            fontSize = 9.5.sp,
+                                            color = Color(0xFF1E293B)
                                         )
                                         Text(
-                                            buildString {
-                                                append("GST: ${company.gstNo} • Ph: ${company.mobile}")
-                                                if (company.email.isNotBlank()) append(" • Email: ${company.email}")
-                                            },
-                                            fontSize = 10.5.sp
+                                            text = "Mobile: ${company.mobile}${if (company.email.isNotBlank()) " | Email: ${company.email}" else ""}",
+                                            fontSize = 9.5.sp,
+                                            color = Color(0xFF334155)
                                         )
+                                        Text(
+                                            text = "State: ${company.state} (${company.stateCode})",
+                                            fontSize = 9.5.sp,
+                                            color = Color(0xFF334155)
+                                        )
+                                    }
+
+                                    // Vertical Divider
+                                    VerticalDivider(thickness = 1.5.dp, color = Color(0xFF0369A1))
+
+                                    // Right: Invoice Details
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .background(Color(0xFFD3E3ED))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Invoice No:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                            Text(bill.invoiceNo, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Date:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                            Text(DimensionCalculator.formatDate(bill.dateMillis), fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Unit:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                Text(bill.dimensionUnit, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                                Text("Dimension", fontSize = 9.sp, color = Color(0xFF475569))
+                                            }
+                                        }
                                     }
                                 }
 
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
+                                HorizontalDivider(thickness = 1.5.dp, color = Color(0xFF0369A1))
 
+                                // Row 2: Customer Details (Left) & Payment/Delivery Summary (Right)
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(IntrinsicSize.Min)
                                 ) {
-                                    Column {
-                                        Text("CUSTOMER:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(bill.customerName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                        if (bill.customerMobile.isNotBlank()) Text("📞 ${bill.customerMobile}", fontSize = 11.sp)
-                                        if (bill.customerAddress.isNotBlank()) Text("📍 ${bill.customerAddress}", fontSize = 11.sp)
+                                    // Left: Billed to
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1.6f)
+                                            .background(Color(0xFFEEF5F9))
+                                            .padding(10.dp)
+                                    ) {
+                                        Text(
+                                            text = "BILLED TO (CUSTOMER DETAILS):",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF0369A1)
+                                        )
+                                        HorizontalDivider(modifier = Modifier.padding(vertical = 3.dp), thickness = 1.dp, color = Color(0xFFCBD5E1))
+
+                                        val rawCust = bill.customerName.trim()
+                                        val parenMatch = Regex("^(.*?)\\s*\\((.*?)\\)$").find(rawCust)
+                                        val (firmName, contactPerson) = when {
+                                            parenMatch != null -> Pair(parenMatch.groupValues[1].trim(), parenMatch.groupValues[2].trim())
+                                            rawCust.contains("\n") -> {
+                                                val parts = rawCust.split("\n", limit = 2)
+                                                Pair(parts[0].trim(), parts[1].trim())
+                                            }
+                                            else -> Pair(rawCust, null)
+                                        }
+
+                                        Text(firmName, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFF0F172A))
+                                        if (!contactPerson.isNullOrBlank()) {
+                                            Text("Customer: $contactPerson", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                        }
+                                        Text("Address: ${bill.customerAddress.ifBlank { "N/A" }}", fontSize = 10.sp, color = Color(0xFF334155))
+                                        Text("Mobile: ${bill.customerMobile.ifBlank { "N/A" }}", fontSize = 10.sp, color = Color(0xFF334155))
+                                        Text("GSTIN: ${bill.customerGstNo.ifBlank { "Unregistered" }}", fontSize = 10.sp, color = Color(0xFF334155))
                                     }
 
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text("Date: ${DimensionCalculator.formatDate(bill.dateMillis)}", fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                        Text("Unit: ${bill.dimensionUnit}", fontSize = 11.sp)
+                                    // Vertical Divider
+                                    VerticalDivider(thickness = 1.5.dp, color = Color(0xFF0369A1))
+
+                                    // Right: Payment & Delivery Summary
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .background(Color(0xFFD3E3ED))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "PAYMENT & DELIVERY SUMMARY:",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF0369A1)
+                                        )
+                                        HorizontalDivider(modifier = Modifier.padding(vertical = 3.dp), thickness = 1.dp, color = Color(0xFFCBD5E1))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Total Quantity:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                            Text("$totalQty Doors", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Total Area:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                            Text("${String.format(java.util.Locale.US, "%.2f", totalSqFt)} Sq.Ft", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Payment Status:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                            Text(
+                                                text = payStatus,
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (payStatus == "PAID") Color(0xFF16A34A) else Color(0xFFD97706)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -207,7 +396,13 @@ fun InvoiceViewDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("${item.slNo}. ${item.particular}", fontSize = 11.5.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(2f))
+                                Column(modifier = Modifier.weight(2f)) {
+                                    val partLines = item.particular.split("\n")
+                                    Text("${item.slNo}. ${partLines[0].trim()}", fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
+                                    if (partLines.size > 1 && partLines[1].isNotBlank()) {
+                                        Text(partLines[1].trim(), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
                                 Text("${DimensionCalculator.formatDimension(item.height)}x${DimensionCalculator.formatDimension(item.width)}", fontSize = 11.sp, modifier = Modifier.weight(1.2f))
                                 Text("${item.qty}", fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.6f))
                                 Text("${String.format(java.util.Locale.US, "%.2f", item.sqFt)}", fontSize = 11.sp, color = Color(0xFF0369A1), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -273,26 +468,145 @@ fun InvoiceViewDialog(
 
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("GRAND TOTAL:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Text(
-                                        DimensionCalculator.formatCurrency(bill.grandTotal),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 18.sp,
-                                        color = Color(0xFF0369A1)
-                                    )
+                                val netPayableAmount = if (bill.netPayable > 0.0) bill.netPayable else if (bill.previousBalance > 0.0) (bill.grandTotal + bill.previousBalance) else bill.grandTotal
+
+                                if (bill.previousBalance > 0.0) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Current Bill Total:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(DimensionCalculator.formatCurrency(bill.grandTotal), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("(+) Previous Balance (Purana Baaki):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                        Text("+ " + DimensionCalculator.formatCurrency(bill.previousBalance), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                    }
+                                    if (bill.paidAmount > 0.0) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("(-) Paid / Received:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                                            Text("- " + DimensionCalculator.formatCurrency(bill.paidAmount), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                                        }
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+                                    val finalRemainingDue = if (bill.paidAmount > 0.0) Math.max(0.0, netPayableAmount - bill.paidAmount) else netPayableAmount
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            if (bill.paidAmount > 0.0) "REMAINING DUE:" else "TOTAL DUE / NET PAYABLE:",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 14.sp,
+                                            color = Color(0xFF0369A1)
+                                        )
+                                        Text(
+                                            DimensionCalculator.formatCurrency(finalRemainingDue),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 18.sp,
+                                            color = Color(0xFF0369A1)
+                                        )
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("GRAND TOTAL:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text(
+                                            DimensionCalculator.formatCurrency(bill.grandTotal),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 18.sp,
+                                            color = Color(0xFF0369A1)
+                                        )
+                                    }
+                                    if (bill.paidAmount > 0.0) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("(-) Paid / Received:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                                            Text("- " + DimensionCalculator.formatCurrency(bill.paidAmount), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                                        }
+                                        HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+                                        val remaining = Math.max(0.0, bill.grandTotal - bill.paidAmount)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("REMAINING DUE:", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color(0xFFB91C1C))
+                                            Text(
+                                                DimensionCalculator.formatCurrency(remaining),
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 18.sp,
+                                                color = Color(0xFFB91C1C)
+                                            )
+                                        }
+                                    }
                                 }
 
                                 Text(
-                                    text = DimensionCalculator.convertToIndianCurrencyWords(bill.grandTotal),
+                                    text = DimensionCalculator.convertToIndianCurrencyWords(netPayableAmount),
                                     fontSize = 10.5.sp,
                                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+
+                                val qrBitmap = remember(company, netPayableAmount) {
+                                    QrCodeHelper.getPaymentQrBitmap(company, netPayableAmount, size = 180)
+                                }
+                                if (qrBitmap != null || company.bankName.isNotBlank() || company.accountNo.isNotBlank()) {
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text("BANK & PAYMENT DETAILS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                if (company.bankName.isNotBlank()) {
+                                                    Text("Bank: ${company.bankName}", fontSize = 10.sp)
+                                                    Text("A/C: ${company.accountNo}", fontSize = 10.sp)
+                                                    Text("IFSC: ${company.ifscCode}", fontSize = 10.sp)
+                                                }
+                                                if (company.upiId.isNotBlank()) {
+                                                    Text("UPI: ${company.upiId}", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0369A1))
+                                                }
+                                            }
+                                            if (qrBitmap != null) {
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Image(
+                                                        bitmap = qrBitmap.asImageBitmap(),
+                                                        contentDescription = "Payment QR",
+                                                        modifier = Modifier
+                                                            .size(64.dp)
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .background(Color.White)
+                                                            .padding(2.dp)
+                                                    )
+                                                    Text("Scan to Pay", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
 
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
 
@@ -331,7 +645,7 @@ fun InvoiceViewDialog(
 
                     Button(
                         onClick = {
-                            ShareHelper.shareInvoiceWhatsApp(context, billWithItems, company)
+                            showShareOptions = true
                         },
                         modifier = Modifier.weight(1.1f),
                         shape = RoundedCornerShape(10.dp),
@@ -339,7 +653,7 @@ fun InvoiceViewDialog(
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("WhatsApp", fontSize = 12.sp)
+                        Text("Share", fontSize = 12.sp)
                     }
 
                     OutlinedButton(
@@ -356,6 +670,29 @@ fun InvoiceViewDialog(
                     }
                 }
             }
+        }
+
+        if (showShareOptions) {
+            ShareOptionsDialog(
+                title = "Share Tax Invoice",
+                subtitle = "Invoice #${bill.invoiceNo} • ${bill.customerName}",
+                onDismiss = { showShareOptions = false },
+                onShareWhatsApp = {
+                    ShareHelper.shareInvoicePdfWhatsApp(context, billWithItems, company)
+                },
+                onShareWhatsAppBusiness = {
+                    ShareHelper.shareInvoicePdfWhatsAppBusiness(context, billWithItems, company)
+                },
+                onSharePdf = {
+                    ShareHelper.shareInvoicePdfGeneral(context, billWithItems, company)
+                },
+                onShareText = {
+                    ShareHelper.shareInvoiceTextGeneral(context, billWithItems, company)
+                },
+                onPrint = {
+                    InvoicePrinter.printInvoice(context, billWithItems, company)
+                }
+            )
         }
     }
 }

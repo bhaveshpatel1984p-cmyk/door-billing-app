@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CustomerDao {
-    @Query("SELECT * FROM customers ORDER BY name ASC")
+    @Query("SELECT * FROM customers ORDER BY CASE WHEN firmName != '' THEN firmName ELSE name END ASC")
     fun getAllCustomers(): Flow<List<CustomerEntity>>
 
     @Query("SELECT * FROM customers WHERE id = :id")
@@ -29,8 +29,17 @@ interface CustomerDao {
     @Delete
     suspend fun deleteCustomer(customer: CustomerEntity)
 
-    @Query("SELECT * FROM customers WHERE name LIKE '%' || :query || '%' OR mobile LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM customers WHERE firmName LIKE '%' || :query || '%' OR name LIKE '%' || :query || '%' OR mobile LIKE '%' || :query || '%'")
     fun searchCustomers(query: String): Flow<List<CustomerEntity>>
+
+    @Query("SELECT * FROM customers")
+    suspend fun getAllCustomersDirect(): List<CustomerEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(customers: List<CustomerEntity>)
+
+    @Query("DELETE FROM customers")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -82,8 +91,32 @@ interface BillDao {
     @Query("SELECT COUNT(*) FROM bills")
     suspend fun getTotalBillsCount(): Int
 
+    @Query("SELECT COALESCE(SUM(grandTotal), 0.0) FROM bills WHERE customerId = :customerId")
+    suspend fun getCustomerTotalBilled(customerId: Long): Double
+
+    @Query("SELECT COALESCE(SUM(grandTotal), 0.0) FROM bills WHERE customerId = :customerId AND id != :excludeBillId")
+    suspend fun getCustomerTotalBilledExcluding(customerId: Long, excludeBillId: Long): Double
+
     @Query("SELECT MAX(id) FROM bills")
     suspend fun getMaxBillId(): Long?
+
+    @Query("SELECT * FROM bills")
+    suspend fun getAllBillsDirect(): List<BillEntity>
+
+    @Query("SELECT * FROM bill_items")
+    suspend fun getAllBillItemsDirect(): List<BillItemEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllBills(bills: List<BillEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllBillItems(items: List<BillItemEntity>)
+
+    @Query("DELETE FROM bills")
+    suspend fun deleteAllBills()
+
+    @Query("DELETE FROM bill_items")
+    suspend fun deleteAllBillItems()
 }
 
 @Dao
@@ -94,14 +127,32 @@ interface PaymentDao {
     @Query("SELECT * FROM payments ORDER BY dateMillis DESC")
     fun getAllPayments(): Flow<List<PaymentEntity>>
 
+    @Query("SELECT * FROM payments")
+    suspend fun getAllPaymentsDirect(): List<PaymentEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPayment(payment: PaymentEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(payments: List<PaymentEntity>)
+
+    @Update
+    suspend fun updatePayment(payment: PaymentEntity)
 
     @Delete
     suspend fun deletePayment(payment: PaymentEntity)
 
     @Query("DELETE FROM payments WHERE id = :paymentId")
     suspend fun deletePaymentById(paymentId: Long)
+
+    @Query("SELECT COALESCE(SUM(amount), 0.0) FROM payments WHERE customerId = :customerId")
+    suspend fun getCustomerTotalPaid(customerId: Long): Double
+
+    @Query("SELECT COALESCE(SUM(amount), 0.0) FROM payments WHERE customerId = :customerId AND (billId IS NULL OR billId != :excludeBillId)")
+    suspend fun getCustomerTotalPaidExcluding(customerId: Long, excludeBillId: Long): Double
+
+    @Query("DELETE FROM payments")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -138,6 +189,15 @@ interface SupplierDao {
 
     @Query("SELECT COUNT(*) FROM suppliers")
     suspend fun getSuppliersCount(): Int
+
+    @Query("SELECT * FROM suppliers")
+    suspend fun getAllSuppliersDirect(): List<SupplierEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(suppliers: List<SupplierEntity>)
+
+    @Query("DELETE FROM suppliers")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -185,6 +245,24 @@ interface PurchaseDao {
 
     @Query("SELECT COUNT(*) FROM purchases")
     suspend fun getTotalPurchasesCount(): Int
+
+    @Query("SELECT * FROM purchases")
+    suspend fun getAllPurchasesDirect(): List<PurchaseEntity>
+
+    @Query("SELECT * FROM purchase_items")
+    suspend fun getAllPurchaseItemsDirect(): List<PurchaseItemEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllPurchases(purchases: List<PurchaseEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllPurchaseItems(items: List<PurchaseItemEntity>)
+
+    @Query("DELETE FROM purchases")
+    suspend fun deleteAllPurchases()
+
+    @Query("DELETE FROM purchase_items")
+    suspend fun deleteAllPurchaseItems()
 }
 
 @Dao
@@ -195,13 +273,25 @@ interface PurchasePaymentDao {
     @Query("SELECT * FROM purchase_payments ORDER BY dateMillis DESC")
     fun getAllPayments(): Flow<List<PurchasePaymentEntity>>
 
+    @Query("SELECT * FROM purchase_payments")
+    suspend fun getAllPurchasePaymentsDirect(): List<PurchasePaymentEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPayment(payment: PurchasePaymentEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(payments: List<PurchasePaymentEntity>)
+
+    @Update
+    suspend fun updatePayment(payment: PurchasePaymentEntity)
 
     @Delete
     suspend fun deletePayment(payment: PurchasePaymentEntity)
 
     @Query("DELETE FROM purchase_payments WHERE id = :paymentId")
     suspend fun deletePaymentById(paymentId: Long)
+
+    @Query("DELETE FROM purchase_payments")
+    suspend fun deleteAll()
 }
 

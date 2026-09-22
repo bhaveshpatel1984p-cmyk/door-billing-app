@@ -64,4 +64,32 @@ class ExampleRobolectricTest {
     assertEquals(120.0, bill.otherCharges, 0.01)
     assertEquals("Cutting Charges", bill.otherChargesDescription)
   }
+
+  @Test
+  fun `customer entity displayName prioritizing firmName over contact name`() {
+    val custBoth = com.example.data.db.CustomerEntity(
+      firmName = "Shree Ram Hardware",
+      name = "Ramesh Patel",
+      mobile = "9876543210"
+    )
+    assertEquals("Shree Ram Hardware (Ramesh Patel)", custBoth.displayName)
+    assertEquals("Shree Ram Hardware", custBoth.primaryTitle)
+    assertEquals("Ramesh Patel", custBoth.subtitle)
+
+    val custFirmOnly = com.example.data.db.CustomerEntity(
+      firmName = "Sharma Traders",
+      name = ""
+    )
+    assertEquals("Sharma Traders", custFirmOnly.displayName)
+    assertEquals("Sharma Traders", custFirmOnly.primaryTitle)
+    assertEquals(null, custFirmOnly.subtitle)
+
+    val custNameOnly = com.example.data.db.CustomerEntity(
+      firmName = "",
+      name = "Vikram Singh"
+    )
+    assertEquals("Vikram Singh", custNameOnly.displayName)
+    assertEquals("Vikram Singh", custNameOnly.primaryTitle)
+    assertEquals(null, custNameOnly.subtitle)
+  }
 }

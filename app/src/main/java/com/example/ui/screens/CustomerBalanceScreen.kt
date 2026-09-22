@@ -63,8 +63,10 @@ fun CustomerBalanceScreen(
     val filteredList = remember(customerBalances, searchQuery) {
         if (searchQuery.isBlank()) customerBalances
         else customerBalances.filter {
-            it.customer.name.contains(searchQuery, ignoreCase = true) ||
-                    it.customer.mobile.contains(searchQuery, ignoreCase = true)
+            it.customer.firmName.contains(searchQuery, ignoreCase = true) ||
+                    it.customer.name.contains(searchQuery, ignoreCase = true) ||
+                    it.customer.mobile.contains(searchQuery, ignoreCase = true) ||
+                    it.customer.gstNo.contains(searchQuery, ignoreCase = true)
         }
     }
 
@@ -223,10 +225,18 @@ fun CustomerBalanceCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = cust.name,
+                    text = cust.primaryTitle,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
+                if (!cust.subtitle.isNullOrBlank()) {
+                    Text(
+                        text = "👤 Contact: ${cust.subtitle}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 if (cust.mobile.isNotBlank()) {
                     Text(
                         text = "📞 ${cust.mobile}",

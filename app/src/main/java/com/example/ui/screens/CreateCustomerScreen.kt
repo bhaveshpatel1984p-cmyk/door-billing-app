@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -70,6 +71,7 @@ import com.example.ui.viewmodel.DoorBillingViewModel
 fun CreateCustomerScreen(
     viewModel: DoorBillingViewModel
 ) {
+    val firmName by viewModel.customerFirmNameInput.collectAsStateWithLifecycle()
     val name by viewModel.customerNameInput.collectAsStateWithLifecycle()
     val mobile by viewModel.customerMobileInput.collectAsStateWithLifecycle()
     val address by viewModel.customerAddressInput.collectAsStateWithLifecycle()
@@ -83,7 +85,8 @@ fun CreateCustomerScreen(
     val filteredCustomers = remember(allCustomers, searchQuery) {
         if (searchQuery.isBlank()) allCustomers
         else allCustomers.filter {
-            it.name.contains(searchQuery, ignoreCase = true) ||
+            it.firmName.contains(searchQuery, ignoreCase = true) ||
+                    it.name.contains(searchQuery, ignoreCase = true) ||
                     it.mobile.contains(searchQuery, ignoreCase = true) ||
                     it.gstNo.contains(searchQuery, ignoreCase = true)
         }
@@ -150,12 +153,29 @@ fun CreateCustomerScreen(
                             }
                         }
 
-                        // 1) Name
+                        // 1) Firm / Business Name *
+                        OutlinedTextField(
+                            value = firmName,
+                            onValueChange = { viewModel.customerFirmNameInput.value = it },
+                            label = { Text("Firm / Business Name *") },
+                            placeholder = { Text("e.g. Shree Ram Doors / Sharma Traders") },
+                            leadingIcon = { Icon(Icons.Default.Business, contentDescription = null) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Words,
+                                imeAction = ImeAction.Next
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("customer_firm_name_input")
+                        )
+
+                        // 2) Customer Name (Optional)
                         OutlinedTextField(
                             value = name,
                             onValueChange = { viewModel.customerNameInput.value = it },
-                            label = { Text("Customer Name *") },
-                            placeholder = { Text("e.g. Ramesh Patel / Sharma Traders") },
+                            label = { Text("Customer Name (Optional)") },
+                            placeholder = { Text("e.g. Ramesh Patel (Contact Person)") },
                             leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
@@ -319,10 +339,18 @@ fun CreateCustomerScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = customer.name,
+                                    text = customer.primaryTitle,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
+                                if (!customer.subtitle.isNullOrBlank()) {
+                                    Text(
+                                        text = "👤 Contact: ${customer.subtitle}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 if (customer.mobile.isNotBlank()) {
                                     Text(
                                         text = "📞 ${customer.mobile}",

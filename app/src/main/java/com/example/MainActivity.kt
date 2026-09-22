@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.db.BillWithItems
 import com.example.ui.screens.AppLockScreen
+import com.example.ui.screens.BackupSyncScreen
 import com.example.ui.screens.CompanyProfileScreen
 import com.example.ui.screens.CreateCustomerScreen
 import com.example.ui.screens.CustomerBalanceScreen
@@ -138,6 +139,10 @@ fun DoorBillingMainApp(
 
         AppScreen.PURCHASE_HUB -> {
           PurchaseHubScreen(viewModel = viewModel)
+        }
+
+        AppScreen.BACKUP_SYNC -> {
+          BackupSyncScreen(viewModel = viewModel)
         }
       }
 

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DoorBack
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.PersonAdd
@@ -37,6 +38,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -67,6 +69,8 @@ import com.example.data.db.CompanyProfileEntity
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
 import com.example.util.DimensionCalculator
+import com.example.util.InvoicePrinter
+import com.example.util.ShareHelper
 
 @Composable
 fun DashboardScreen(
@@ -80,6 +84,7 @@ fun DashboardScreen(
     val customers by viewModel.allCustomers.collectAsStateWithLifecycle()
 
     var showExitDialog by remember { mutableStateOf(false) }
+    var billToShare by remember { mutableStateOf<BillWithItems?>(null) }
 
     val totalOutstanding = customerBalances.sumOf { it.balance }
     val totalRevenue = bills.sumOf { it.bill.grandTotal }
@@ -230,7 +235,7 @@ fun DashboardScreen(
             }
         }
 
-        // 7) Purchase Entry & 8) Exit
+        // 7) Purchase Entry & 8) Cloud Backup
         item {
             Row(
                 modifier = Modifier
@@ -249,12 +254,32 @@ fun DashboardScreen(
                 )
 
                 DashboardActionButton(
-                    title = "8) Exit",
-                    subtitle = "Close Application",
+                    title = "8) Cloud Backup",
+                    subtitle = "Google Drive & Sync",
+                    icon = Icons.Default.CloudSync,
+                    iconBgColor = Color(0xFF2563EB),
+                    testTag = "cloud_backup_button",
+                    modifier = Modifier.weight(1f),
+                    onClick = { viewModel.navigateTo(AppScreen.BACKUP_SYNC) }
+                )
+            }
+        }
+
+        // 9) Exit Application
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                DashboardActionButton(
+                    title = "9) Exit Application",
+                    subtitle = "Close Nirmal Door Billing",
                     icon = Icons.AutoMirrored.Filled.ExitToApp,
                     iconBgColor = Color(0xFF475569),
                     testTag = "exit_button",
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     onClick = { showExitDialog = true }
                 )
             }
@@ -325,7 +350,8 @@ fun DashboardScreen(
             items(bills.take(4)) { billWithItems ->
                 RecentBillItem(
                     billWithItems = billWithItems,
-                    onClick = { onViewBill(billWithItems) }
+                    onClick = { onViewBill(billWithItems) },
+                    onShareClick = { billToShare = billWithItems }
                 )
             }
         }
@@ -351,6 +377,30 @@ fun DashboardScreen(
                 TextButton(onClick = { showExitDialog = false }) {
                     Text("Cancel")
                 }
+            }
+        )
+    }
+
+    // Share Options Dialog for recent bill
+    billToShare?.let { b ->
+        ShareOptionsDialog(
+            title = "Share Tax Invoice",
+            subtitle = "Invoice #${b.bill.invoiceNo} • ${b.bill.customerName}",
+            onDismiss = { billToShare = null },
+            onShareWhatsApp = {
+                ShareHelper.shareInvoicePdfWhatsApp(context, b, company)
+            },
+            onShareWhatsAppBusiness = {
+                ShareHelper.shareInvoicePdfWhatsAppBusiness(context, b, company)
+            },
+            onSharePdf = {
+                ShareHelper.shareInvoicePdfGeneral(context, b, company)
+            },
+            onShareText = {
+                ShareHelper.shareInvoiceTextGeneral(context, b, company)
+            },
+            onPrint = {
+                InvoicePrinter.printInvoice(context, b, company)
             }
         )
     }
@@ -555,7 +605,8 @@ fun DashboardActionButton(
 @Composable
 fun RecentBillItem(
     billWithItems: BillWithItems,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onShareClick: (() -> Unit)? = null
 ) {
     val bill = billWithItems.bill
     val totalSqFt = billWithItems.items.sumOf { it.sqFt }
@@ -604,28 +655,46 @@ fun RecentBillItem(
                 )
             }
 
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = DimensionCalculator.formatCurrency(bill.grandTotal),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0369A1)
-                    )
-                )
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (bill.paidAmount >= bill.grandTotal) Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
-                    modifier = Modifier.padding(top = 2.dp)
-                ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = if (bill.paidAmount >= bill.grandTotal) "Paid" else "Unpaid",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = if (bill.paidAmount >= bill.grandTotal) Color(0xFF166534) else Color(0xFF92400E),
+                        text = DimensionCalculator.formatCurrency(bill.grandTotal),
+                        style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp
-                        ),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            color = Color(0xFF0369A1)
+                        )
                     )
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (bill.paidAmount >= bill.grandTotal) Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        Text(
+                            text = if (bill.paidAmount >= bill.grandTotal) "Paid" else "Unpaid",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = if (bill.paidAmount >= bill.grandTotal) Color(0xFF166534) else Color(0xFF92400E),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            ),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                if (onShareClick != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = onShareClick,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("share_recent_bill_${bill.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Share on WhatsApp or other apps",
+                            tint = Color(0xFF25D366)
+                        )
+                    }
                 }
             }
         }

@@ -21,6 +21,14 @@ import com.example.data.db.SupplierEntity
 import com.example.data.db.SupplierLedgerEntry
 import com.example.data.repository.DoorBillingRepository
 import com.example.util.DimensionCalculator
+import android.content.Context
+import android.content.Intent
+import com.example.data.backup.AppBackupData
+import com.example.data.backup.BackupSummary
+import com.example.data.backup.DriveFileInfo
+import com.example.data.backup.GoogleDriveManager
+import com.example.util.LocalBackupHelper
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +40,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class AppScreen {
     DASHBOARD,
@@ -42,24 +51,47 @@ enum class AppScreen {
     CUSTOMER_LEDGER,
     COMPANY_PROFILE,
     FINANCIAL_STATS,
-    PURCHASE_HUB
+    PURCHASE_HUB,
+    BACKUP_SYNC
 }
 
 class DoorBillingViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val database = DoorDatabase.getDatabase(application)
+    val googleDriveManager = GoogleDriveManager(application)
     private val repository: DoorBillingRepository
 
+    // Cloud Backup & Multi-Device Sync State
+    private val prefs = application.getSharedPreferences("door_billing_backup_prefs", Context.MODE_PRIVATE)
+
+    private val _googleAccount = MutableStateFlow<GoogleSignInAccount?>(null)
+    val googleAccount: StateFlow<GoogleSignInAccount?> = _googleAccount.asStateFlow()
+
+    private val _driveBackupInfo = MutableStateFlow<DriveFileInfo?>(null)
+    val driveBackupInfo: StateFlow<DriveFileInfo?> = _driveBackupInfo.asStateFlow()
+
+    private val _isBackupOperating = MutableStateFlow(false)
+    val isBackupOperating: StateFlow<Boolean> = _isBackupOperating.asStateFlow()
+
+    private val _lastBackupTime = MutableStateFlow(prefs.getLong("last_backup_time", 0L))
+    val lastBackupTime: StateFlow<Long> = _lastBackupTime.asStateFlow()
+
+    private val _lastBackupType = MutableStateFlow(prefs.getString("last_backup_type", "") ?: "")
+    val lastBackupType: StateFlow<String> = _lastBackupType.asStateFlow()
+
     init {
-        val db = DoorDatabase.getDatabase(application)
         repository = DoorBillingRepository(
-            customerDao = db.customerDao(),
-            billDao = db.billDao(),
-            paymentDao = db.paymentDao(),
-            companyProfileDao = db.companyProfileDao(),
-            supplierDao = db.supplierDao(),
-            purchaseDao = db.purchaseDao(),
-            purchasePaymentDao = db.purchasePaymentDao()
+            customerDao = database.customerDao(),
+            billDao = database.billDao(),
+            paymentDao = database.paymentDao(),
+            companyProfileDao = database.companyProfileDao(),
+            supplierDao = database.supplierDao(),
+            purchaseDao = database.purchaseDao(),
+            purchasePaymentDao = database.purchasePaymentDao()
         )
+
+        // Initialize Google Account state
+        refreshGoogleAccount()
 
         // Pre-populate standard supplier vendors if database is empty so dropdown is never blank
         viewModelScope.launch(Dispatchers.IO) {
@@ -120,6 +152,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Selected customer for editing or creating
+    val customerFirmNameInput = MutableStateFlow("")
     val customerNameInput = MutableStateFlow("")
     val customerMobileInput = MutableStateFlow("")
     val customerAddressInput = MutableStateFlow("")
@@ -127,6 +160,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val editingCustomerId = MutableStateFlow<Long?>(null)
 
     fun prepareNewCustomer() {
+        customerFirmNameInput.value = ""
         customerNameInput.value = ""
         customerMobileInput.value = ""
         customerAddressInput.value = ""
@@ -135,7 +169,8 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun prepareEditCustomer(customer: CustomerEntity) {
-        customerNameInput.value = customer.name
+        customerFirmNameInput.value = if (customer.firmName.isNotBlank()) customer.firmName else customer.name
+        customerNameInput.value = if (customer.firmName.isNotBlank()) customer.name else ""
         customerMobileInput.value = customer.mobile
         customerAddressInput.value = customer.address
         customerGstInput.value = customer.gstNo
@@ -143,16 +178,21 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun saveCustomer(onSuccess: (CustomerEntity) -> Unit = {}) {
-        val name = customerNameInput.value.trim()
-        if (name.isBlank()) {
-            showMessage("Please enter customer name")
+        val firmName = customerFirmNameInput.value.trim()
+        val contactName = customerNameInput.value.trim()
+        if (firmName.isBlank() && contactName.isBlank()) {
+            showMessage("Please enter Firm Name")
             return
         }
+
+        val finalFirmName = if (firmName.isNotBlank()) firmName else contactName
+        val finalContactName = if (firmName.isNotBlank()) contactName else ""
 
         viewModelScope.launch {
             val customer = CustomerEntity(
                 id = editingCustomerId.value ?: 0L,
-                name = name,
+                firmName = finalFirmName,
+                name = finalContactName,
                 mobile = customerMobileInput.value.trim(),
                 address = customerAddressInput.value.trim(),
                 gstNo = customerGstInput.value.trim().uppercase()
@@ -168,7 +208,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     fun deleteCustomer(customer: CustomerEntity) {
         viewModelScope.launch {
             repository.deleteCustomer(customer)
-            showMessage("Customer ${customer.name} deleted")
+            showMessage("Customer ${customer.displayName} deleted")
         }
     }
 
@@ -192,8 +232,34 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val isRoundOffAutoDraft = MutableStateFlow(true)
     val roundOffDraft = MutableStateFlow(0.0)
     val paidAmountDraft = MutableStateFlow(0.0)
+    val previousBalanceDraft = MutableStateFlow(0.0)
+    val includePreviousBalanceDraft = MutableStateFlow(true)
     val notesDraft = MutableStateFlow("")
     val billItemsDraft = MutableStateFlow<List<BillItemEntity>>(emptyList())
+
+    fun selectCustomerForBill(customer: CustomerEntity?) {
+        selectedCustomerDraft.value = customer
+        if (customer != null) {
+            viewModelScope.launch {
+                val prevBal = repository.getCustomerDueBalance(customer.id, excludeBillId = billIdDraft.value)
+                previousBalanceDraft.value = maxOf(0.0, prevBal)
+                includePreviousBalanceDraft.value = (prevBal > 0.0)
+            }
+        } else {
+            previousBalanceDraft.value = 0.0
+            includePreviousBalanceDraft.value = false
+        }
+    }
+
+    fun setPreviousBalance(amount: Double) {
+        val clean = maxOf(0.0, amount)
+        previousBalanceDraft.value = clean
+        includePreviousBalanceDraft.value = (clean > 0.0)
+    }
+
+    fun toggleIncludePreviousBalance(include: Boolean) {
+        includePreviousBalanceDraft.value = include
+    }
 
     fun setBillDate(dateMillis: Long) {
         billDateMillisDraft.value = dateMillis
@@ -201,6 +267,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
 
     // Temporary Item Line Inputs
     val itemParticularInput = MutableStateFlow("")
+    val itemDoorSizeInput = MutableStateFlow("")
     val itemHsnInput = MutableStateFlow("4418")
     val itemHeightInput = MutableStateFlow("")
     val itemWidthInput = MutableStateFlow("")
@@ -213,6 +280,14 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             invoiceNoDraft.value = repository.generateNextInvoiceNumber()
             billDateMillisDraft.value = System.currentTimeMillis()
             selectedCustomerDraft.value = presetCustomer
+            if (presetCustomer != null) {
+                val prevBal = repository.getCustomerDueBalance(presetCustomer.id, excludeBillId = 0L)
+                previousBalanceDraft.value = maxOf(0.0, prevBal)
+                includePreviousBalanceDraft.value = (prevBal > 0.0)
+            } else {
+                previousBalanceDraft.value = 0.0
+                includePreviousBalanceDraft.value = false
+            }
             dimensionUnitDraft.value = "Inches"
             taxRateDraft.value = 18.0
             isGstIncludedDraft.value = true
@@ -238,12 +313,26 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         val foundCustomer = allCustomers.value.find { it.id == bill.customerId }
             ?: CustomerEntity(
                 id = bill.customerId,
-                name = bill.customerName,
+                firmName = bill.customerName,
+                name = "",
                 mobile = bill.customerMobile,
                 address = bill.customerAddress,
                 gstNo = bill.customerGstNo
             )
         selectedCustomerDraft.value = foundCustomer
+        previousBalanceDraft.value = bill.previousBalance
+        includePreviousBalanceDraft.value = (bill.previousBalance > 0.0)
+
+        viewModelScope.launch {
+            if (bill.previousBalance <= 0.0) {
+                val pastDue = repository.getCustomerDueBalance(bill.customerId, excludeBillId = bill.id)
+                if (pastDue > 0.0) {
+                    previousBalanceDraft.value = pastDue
+                    includePreviousBalanceDraft.value = true
+                }
+            }
+        }
+
         dimensionUnitDraft.value = bill.dimensionUnit
         taxRateDraft.value = bill.taxRate
         isGstIncludedDraft.value = bill.isGstIncluded
@@ -261,6 +350,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
 
     fun resetItemInputs() {
         itemParticularInput.value = ""
+        itemDoorSizeInput.value = ""
         itemHsnInput.value = "4418"
         itemHeightInput.value = ""
         itemWidthInput.value = ""
@@ -268,8 +358,30 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         itemRateInput.value = ""
     }
 
+    fun prepareEditItem(item: BillItemEntity) {
+        if (item.particular.contains("\n")) {
+            val parts = item.particular.split("\n", limit = 2)
+            itemParticularInput.value = parts[0].trim()
+            itemDoorSizeInput.value = parts[1].trim()
+        } else {
+            itemParticularInput.value = item.particular
+            itemDoorSizeInput.value = ""
+        }
+        itemHsnInput.value = item.hsnSac
+        itemHeightInput.value = DimensionCalculator.formatDimension(item.height)
+        itemWidthInput.value = DimensionCalculator.formatDimension(item.width)
+        itemQtyInput.value = item.qty.toString()
+        itemRateInput.value = DimensionCalculator.formatDimension(item.rate)
+    }
+
     fun addOrUpdateItemToBill(editingIndex: Int? = null) {
-        val particular = itemParticularInput.value.trim()
+        val rawPart = itemParticularInput.value.trim()
+        val sizeNote = itemDoorSizeInput.value.trim()
+        val particular = when {
+            rawPart.contains("\n") -> rawPart
+            sizeNote.isNotBlank() -> "$rawPart\n$sizeNote"
+            else -> rawPart
+        }
         val height = itemHeightInput.value.toDoubleOrNull() ?: 0.0
         val width = itemWidthInput.value.toDoubleOrNull() ?: 0.0
         val qty = itemQtyInput.value.toIntOrNull() ?: 1
@@ -371,13 +483,15 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             roundOffDraft.value
         }
         val grandTotal = Math.max(0.0, rawGrandTotal + roundOff)
+        val prevBalance = if (includePreviousBalanceDraft.value) previousBalanceDraft.value else 0.0
+        val netPayable = grandTotal + prevBalance
 
         viewModelScope.launch {
             val billEntity = BillEntity(
                 id = billIdDraft.value,
                 invoiceNo = invoiceNoDraft.value.ifBlank { repository.generateNextInvoiceNumber() },
                 customerId = customer.id,
-                customerName = customer.name,
+                customerName = customer.displayName,
                 customerMobile = customer.mobile,
                 customerAddress = customer.address,
                 customerGstNo = customer.gstNo,
@@ -394,6 +508,8 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
                 otherChargesDescription = otherChargesDesc,
                 roundOffAmount = roundOff,
                 grandTotal = grandTotal,
+                previousBalance = prevBalance,
+                netPayable = netPayable,
                 paidAmount = paidAmountDraft.value,
                 notes = notesDraft.value.trim()
             )
@@ -407,7 +523,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
                 repository.addPayment(
                     PaymentEntity(
                         customerId = customer.id,
-                        customerName = customer.name,
+                        customerName = customer.displayName,
                         billId = savedBillId,
                         amount = paidAmountDraft.value,
                         dateMillis = billDateMillisDraft.value,
@@ -434,7 +550,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     // 3) CUSTOMER BALANCE & LEDGER
     // -------------------------------------------------------------
     val customerBalances: StateFlow<List<CustomerBalanceSummary>> = repository.customerBalancesSummary
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val selectedLedgerCustomer = MutableStateFlow<CustomerEntity?>(null)
     val ledgerEntries = MutableStateFlow<List<LedgerEntry>>(emptyList())
@@ -475,6 +591,47 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
                 )
             )
             showMessage("Payment of ₹${DimensionCalculator.formatDimension(amount)} recorded!")
+        }
+    }
+
+    fun updateCustomerPayment(
+        paymentId: Long,
+        customerId: Long,
+        customerName: String,
+        amount: Double,
+        mode: String,
+        reference: String,
+        notes: String,
+        dateMillis: Long,
+        onSuccess: () -> Unit = {}
+    ) {
+        if (amount <= 0) {
+            showMessage("Please enter a valid payment amount")
+            return
+        }
+        viewModelScope.launch {
+            repository.updatePayment(
+                PaymentEntity(
+                    id = paymentId,
+                    customerId = customerId,
+                    customerName = customerName,
+                    amount = amount,
+                    dateMillis = dateMillis,
+                    paymentMode = mode,
+                    referenceNo = reference,
+                    notes = notes
+                )
+            )
+            showMessage("Payment entry updated successfully!")
+            onSuccess()
+        }
+    }
+
+    fun deleteCustomerPayment(paymentId: Long, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.deletePayment(paymentId)
+            showMessage("Payment entry deleted")
+            onSuccess()
         }
     }
 
@@ -846,10 +1003,212 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun deleteSupplierPayment(paymentId: Long) {
+    fun updateSupplierPayment(
+        paymentId: Long,
+        supplierId: Long,
+        supplierName: String,
+        amount: Double,
+        mode: String,
+        reference: String,
+        notes: String,
+        dateMillis: Long,
+        onSuccess: () -> Unit = {}
+    ) {
+        if (amount <= 0) {
+            showMessage("Please enter a valid payment amount")
+            return
+        }
+        viewModelScope.launch {
+            repository.updatePurchasePayment(
+                PurchasePaymentEntity(
+                    id = paymentId,
+                    supplierId = supplierId,
+                    supplierName = supplierName,
+                    amount = amount,
+                    dateMillis = dateMillis,
+                    paymentMode = mode,
+                    referenceNo = reference,
+                    notes = notes
+                )
+            )
+            showMessage("Supplier payment entry updated successfully!")
+            onSuccess()
+        }
+    }
+
+    fun deleteSupplierPayment(paymentId: Long, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             repository.deletePurchasePayment(paymentId)
             showMessage("Payment entry deleted")
+            onSuccess()
+        }
+    }
+
+    // -------------------------------------------------------------
+    // BACKUP & RESTORE METHODS
+    // -------------------------------------------------------------
+    fun refreshGoogleAccount() {
+        val account = googleDriveManager.getSignedInAccount()
+        _googleAccount.value = account
+        if (account != null) {
+            checkDriveBackup()
+        }
+    }
+
+    fun onGoogleSignInResult(data: Intent?) {
+        val account = googleDriveManager.handleSignInResult(data)
+        _googleAccount.value = account
+        if (account != null) {
+            showMessage("Google Drive connected: ${account.email}")
+            checkDriveBackup()
+        } else {
+            showMessage("Google Sign-In was cancelled")
+        }
+    }
+
+    fun signOutGoogleDrive() {
+        viewModelScope.launch {
+            googleDriveManager.signOut()
+            _googleAccount.value = null
+            _driveBackupInfo.value = null
+            showMessage("Disconnected from Google Drive")
+        }
+    }
+
+    fun checkDriveBackup() {
+        val account = _googleAccount.value ?: return
+        viewModelScope.launch {
+            val token = googleDriveManager.fetchOAuthToken(account)
+            if (token != null) {
+                val info = googleDriveManager.findBackupFile(token)
+                _driveBackupInfo.value = info
+            }
+        }
+    }
+
+    fun backupToGoogleDrive(onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        val account = _googleAccount.value
+        if (account == null) {
+            onResult(false, "Please connect Google Drive account first")
+            return
+        }
+        _isBackupOperating.value = true
+        viewModelScope.launch {
+            try {
+                val token = googleDriveManager.fetchOAuthToken(account)
+                if (token == null) {
+                    _isBackupOperating.value = false
+                    val msg = "Google authorization needed. Please reconnect your account."
+                    showMessage(msg)
+                    onResult(false, msg)
+                    return@launch
+                }
+
+                val backupData = repository.exportAllData()
+                val jsonStr = backupData.toJsonString()
+                val result = googleDriveManager.uploadBackup(token, jsonStr)
+
+                _isBackupOperating.value = false
+                result.fold(
+                    onSuccess = { info ->
+                        _driveBackupInfo.value = info
+                        val now = System.currentTimeMillis()
+                        _lastBackupTime.value = now
+                        _lastBackupType.value = "Google Drive"
+                        prefs.edit()
+                            .putLong("last_backup_time", now)
+                            .putString("last_backup_type", "Google Drive")
+                            .apply()
+                        val msg = "Backup saved to Google Drive! (${backupData.bills.size} bills, ${backupData.customers.size} customers, ${backupData.purchases.size} purchases)"
+                        showMessage(msg)
+                        onResult(true, msg)
+                    },
+                    onFailure = { err ->
+                        val msg = "Drive upload failed: ${err.localizedMessage ?: "Unknown error"}"
+                        showMessage(msg)
+                        onResult(false, msg)
+                    }
+                )
+            } catch (e: Exception) {
+                _isBackupOperating.value = false
+                val msg = "Backup error: ${e.localizedMessage}"
+                showMessage(msg)
+                onResult(false, msg)
+            }
+        }
+    }
+
+    fun restoreFromGoogleDrive(clearExisting: Boolean, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        val account = _googleAccount.value
+        val driveInfo = _driveBackupInfo.value
+        if (account == null || driveInfo == null) {
+            onResult(false, "No backup file found in Google Drive")
+            return
+        }
+        _isBackupOperating.value = true
+        viewModelScope.launch {
+            try {
+                val token = googleDriveManager.fetchOAuthToken(account)
+                if (token == null) {
+                    _isBackupOperating.value = false
+                    val msg = "Authorization failed. Please reconnect Google Drive."
+                    showMessage(msg)
+                    onResult(false, msg)
+                    return@launch
+                }
+
+                val downloadResult = googleDriveManager.downloadBackup(token, driveInfo.id)
+                downloadResult.fold(
+                    onSuccess = { jsonContent ->
+                        restoreFromJsonString(jsonContent, clearExisting, onResult)
+                    },
+                    onFailure = { err ->
+                        _isBackupOperating.value = false
+                        val msg = "Download failed: ${err.localizedMessage}"
+                        showMessage(msg)
+                        onResult(false, msg)
+                    }
+                )
+            } catch (e: Exception) {
+                _isBackupOperating.value = false
+                val msg = "Restore failed: ${e.localizedMessage}"
+                showMessage(msg)
+                onResult(false, msg)
+            }
+        }
+    }
+
+    suspend fun getExportBackupJson(): String = withContext(Dispatchers.IO) {
+        repository.exportAllData().toJsonString()
+    }
+
+    fun restoreFromJsonString(jsonString: String, clearExisting: Boolean, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        _isBackupOperating.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val backupData = AppBackupData.fromJsonString(jsonString)
+                repository.restoreAllData(database, backupData, clearExisting)
+                val now = System.currentTimeMillis()
+                _lastBackupTime.value = now
+                _lastBackupType.value = "Restored Data"
+                prefs.edit()
+                    .putLong("last_backup_time", now)
+                    .putString("last_backup_type", "Restored Data")
+                    .apply()
+                _isBackupOperating.value = false
+                val msg = "Restore Complete! ${backupData.bills.size} Bills, ${backupData.customers.size} Customers, ${backupData.purchases.size} Purchases restored."
+                showMessage(msg)
+                withContext(Dispatchers.Main) {
+                    onResult(true, msg)
+                }
+            } catch (e: Exception) {
+                _isBackupOperating.value = false
+                val msg = "Error restoring data: ${e.localizedMessage ?: "Invalid backup file"}"
+                showMessage(msg)
+                withContext(Dispatchers.Main) {
+                    onResult(false, msg)
+                }
+            }
         }
     }
 }

@@ -90,6 +90,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.db.PurchaseEntity
+import com.example.data.db.PurchasePaymentEntity
 import com.example.data.db.PurchaseWithItems
 import com.example.data.db.SupplierBalanceSummary
 import com.example.data.db.SupplierEntity
@@ -1214,7 +1215,7 @@ fun PurchaseEntryTab(
                         OutlinedTextField(
                             value = if (otherCharges == 0.0) "" else otherCharges.toString(),
                             onValueChange = { viewModel.purchaseOtherChargesDraft.value = it.toDoubleOrNull() ?: 0.0 },
-                            label = { Text("Transportation / Other (₹)") },
+                            label = { Text("Transportation / Other (₹)", color = Color.Black) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true,
                             modifier = Modifier.weight(1f)
@@ -1244,13 +1245,18 @@ fun PurchaseEntryTab(
                                 onCheckedChange = { viewModel.purchaseIsRoundOffAutoDraft.value = it },
                                 modifier = Modifier.padding(end = 8.dp)
                             )
-                            Text("Auto Round Off Total", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = "Auto Round Off Total",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
                         }
                         Text(
                             text = (if (calculatedRoundOff >= 0) "+ " else "- ") + DimensionCalculator.formatCurrency(Math.abs(calculatedRoundOff)),
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F766E)
+                            color = Color.Black
                         )
                     }
 
@@ -1934,6 +1940,8 @@ fun SupplierLedgerDialog(
     var payRef by remember { mutableStateOf("") }
     var payNotes by remember { mutableStateOf("") }
     var payDateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var editingSupplierPayment by remember { mutableStateOf<PurchasePaymentEntity?>(null) }
+    var deletingSupplierPayment by remember { mutableStateOf<PurchasePaymentEntity?>(null) }
 
     val totalPurchased = ledgerEntries.filterIsInstance<SupplierLedgerEntry.PurchaseBillEntry>().sumOf { it.grandTotal }
     val totalPaid = ledgerEntries.filterIsInstance<SupplierLedgerEntry.PaymentRecord>().sumOf { it.payment.amount }
@@ -2056,22 +2064,65 @@ fun SupplierLedgerDialog(
                                 shadowElevation = 1.dp,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(entry.description, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
-                                        Text(DimensionCalculator.formatDate(entry.dateMillis), fontSize = 11.sp, color = Color.Gray)
+                                Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(entry.description, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                                            Text(DimensionCalculator.formatDate(entry.dateMillis), fontSize = 11.sp, color = Color.Gray)
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            if (entry.creditAmount > 0) {
+                                                Text("+ ${DimensionCalculator.formatCurrency(entry.creditAmount)}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F766E))
+                                                Text("Purchase Bill", fontSize = 10.sp, color = Color.Gray)
+                                            } else {
+                                                Text("- ${DimensionCalculator.formatCurrency(entry.debitAmount)}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF16A34A))
+                                                Text("Paid Out", fontSize = 10.sp, color = Color(0xFF16A34A))
+                                            }
+                                        }
                                     }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        if (entry.creditAmount > 0) {
-                                            Text("+ ${DimensionCalculator.formatCurrency(entry.creditAmount)}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F766E))
-                                            Text("Purchase Bill", fontSize = 10.sp, color = Color.Gray)
-                                        } else {
-                                            Text("- ${DimensionCalculator.formatCurrency(entry.debitAmount)}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF16A34A))
-                                            Text("Paid Out", fontSize = 10.sp, color = Color(0xFF16A34A))
+
+                                    if (entry is SupplierLedgerEntry.PaymentRecord) {
+                                        if (entry.payment.notes.isNotBlank()) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "Note: ${entry.payment.notes}",
+                                                fontSize = 11.sp,
+                                                color = Color.DarkGray
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.5.dp)
+                                        Spacer(modifier = Modifier.height(2.dp))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            TextButton(
+                                                onClick = { editingSupplierPayment = entry.payment },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                                modifier = Modifier.height(28.dp)
+                                            ) {
+                                                Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(13.dp), tint = Color(0xFF0F766E))
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Text("Edit", fontSize = 11.sp, color = Color(0xFF0F766E), fontWeight = FontWeight.Bold)
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            TextButton(
+                                                onClick = { deletingSupplierPayment = entry.payment },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                                modifier = Modifier.height(28.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(13.dp), tint = MaterialTheme.colorScheme.error)
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Text("Delete", fontSize = 11.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                                            }
                                         }
                                     }
                                 }
@@ -2195,6 +2246,158 @@ fun SupplierLedgerDialog(
             },
             dismissButton = {
                 TextButton(onClick = { showPaymentDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Edit Supplier Payment Dialog
+    if (editingSupplierPayment != null) {
+        val sp = editingSupplierPayment!!
+        var editPayAmountStr by remember { mutableStateOf(sp.amount.toString().removeSuffix(".0")) }
+        var editPayMode by remember { mutableStateOf(sp.paymentMode) }
+        var editPayRef by remember { mutableStateOf(sp.referenceNo) }
+        var editPayNotes by remember { mutableStateOf(sp.notes) }
+        var editPayDateMillis by remember { mutableStateOf(sp.dateMillis) }
+
+        AlertDialog(
+            onDismissRequest = { editingSupplierPayment = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Edit Supplier Payment", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Supplier: ${supplier.name}", fontWeight = FontWeight.Bold, color = Color(0xFF0F766E), fontSize = 13.sp)
+
+                    // Date Picker
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Payment Date:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFCCFBF1),
+                            modifier = Modifier.clickable {
+                                val cal = Calendar.getInstance().apply { timeInMillis = editPayDateMillis }
+                                DatePickerDialog(
+                                    context,
+                                    { _, year, month, dayOfMonth ->
+                                        val newCal = Calendar.getInstance().apply { set(year, month, dayOfMonth) }
+                                        editPayDateMillis = newCal.timeInMillis
+                                    },
+                                    cal.get(Calendar.YEAR),
+                                    cal.get(Calendar.MONTH),
+                                    cal.get(Calendar.DAY_OF_MONTH)
+                                ).show()
+                            }
+                        ) {
+                            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF0F766E))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("${DimensionCalculator.formatDate(editPayDateMillis)} ✎", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F766E))
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = editPayAmountStr,
+                        onValueChange = { editPayAmountStr = it },
+                        label = { Text("Payment Amount (₹) *") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Text("Payment Mode", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf("Bank Transfer", "UPI / GPay", "Cheque", "Cash").forEach { m ->
+                            FilterChip(
+                                selected = editPayMode == m,
+                                onClick = { editPayMode = m },
+                                label = { Text(m, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = editPayRef,
+                        onValueChange = { editPayRef = it },
+                        label = { Text("Reference / UTR / Cheque No") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = editPayNotes,
+                        onValueChange = { editPayNotes = it },
+                        label = { Text("Notes (Optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val amt = editPayAmountStr.toDoubleOrNull() ?: 0.0
+                        if (amt > 0) {
+                            viewModel.updateSupplierPayment(
+                                paymentId = sp.id,
+                                supplierId = supplier.id,
+                                supplierName = supplier.name,
+                                amount = amt,
+                                mode = editPayMode,
+                                reference = editPayRef.trim(),
+                                notes = editPayNotes.trim(),
+                                dateMillis = editPayDateMillis,
+                                onSuccess = {
+                                    editingSupplierPayment = null
+                                }
+                            )
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E))
+                ) {
+                    Text("Update Payment")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingSupplierPayment = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Delete Supplier Payment Dialog
+    if (deletingSupplierPayment != null) {
+        val sp = deletingSupplierPayment!!
+        AlertDialog(
+            onDismissRequest = { deletingSupplierPayment = null },
+            title = { Text("Delete Payment Entry?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Are you sure you want to delete this payment of ${DimensionCalculator.formatCurrency(sp.amount)} to ${supplier.name} recorded on ${DimensionCalculator.formatDate(sp.dateMillis)}? Outstanding due balance will increase.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteSupplierPayment(sp.id) {
+                            deletingSupplierPayment = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingSupplierPayment = null }) { Text("Cancel") }
             }
         )
     }

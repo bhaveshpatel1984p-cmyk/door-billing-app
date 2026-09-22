@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
         PurchaseItemEntity::class,
         PurchasePaymentEntity::class
     ],
-    version = 3,
+    version = 6,
     exportSchema = false
 )
 abstract class DoorDatabase : RoomDatabase() {
@@ -117,6 +117,26 @@ abstract class DoorDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE company_profile ADD COLUMN qrCodeUri TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE company_profile ADD COLUMN upiId TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE bills ADD COLUMN previousBalance REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE bills ADD COLUMN netPayable REAL NOT NULL DEFAULT 0.0")
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE customers ADD COLUMN firmName TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): DoorDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -124,7 +144,7 @@ abstract class DoorDatabase : RoomDatabase() {
                     DoorDatabase::class.java,
                     "door_billing_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

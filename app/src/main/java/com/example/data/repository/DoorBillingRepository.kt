@@ -22,6 +22,9 @@ import com.example.data.db.SupplierBalanceSummary
 import com.example.data.db.SupplierDao
 import com.example.data.db.SupplierEntity
 import com.example.data.db.SupplierLedgerEntry
+import com.example.data.backup.AppBackupData
+import com.example.data.db.DoorDatabase
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -86,6 +89,10 @@ class DoorBillingRepository(
         return paymentDao.insertPayment(payment)
     }
 
+    suspend fun updatePayment(payment: PaymentEntity) {
+        paymentDao.updatePayment(payment)
+    }
+
     suspend fun deletePayment(paymentId: Long) {
         paymentDao.deletePaymentById(paymentId)
     }
@@ -133,6 +140,20 @@ class DoorBillingRepository(
                 )
             }.sortedByDescending { it.balance }
         }
+
+    suspend fun getCustomerDueBalance(customerId: Long, excludeBillId: Long = 0L): Double {
+        val totalBilled = if (excludeBillId > 0L) {
+            billDao.getCustomerTotalBilledExcluding(customerId, excludeBillId)
+        } else {
+            billDao.getCustomerTotalBilled(customerId)
+        }
+        val totalPaid = if (excludeBillId > 0L) {
+            paymentDao.getCustomerTotalPaidExcluding(customerId, excludeBillId)
+        } else {
+            paymentDao.getCustomerTotalPaid(customerId)
+        }
+        return maxOf(0.0, totalBilled - totalPaid)
+    }
 
     // Combined Ledger for a customer
     fun getCustomerLedger(customerId: Long): Flow<List<LedgerEntry>> =
@@ -209,6 +230,10 @@ class DoorBillingRepository(
     suspend fun recordPurchasePayment(payment: PurchasePaymentEntity): Long =
         purchasePaymentDao.insertPayment(payment)
 
+    suspend fun updatePurchasePayment(payment: PurchasePaymentEntity) {
+        purchasePaymentDao.updatePayment(payment)
+    }
+
     suspend fun deletePurchasePayment(paymentId: Long) =
         purchasePaymentDao.deletePaymentById(paymentId)
 
@@ -268,4 +293,79 @@ class DoorBillingRepository(
 
             (purchaseEntries + paymentEntries).sortedBy { it.dateMillis }
         }
+
+    suspend fun exportAllData(): AppBackupData {
+        val profile = companyProfileDao.getCompanyProfileSync()
+        val customers = customerDao.getAllCustomersDirect()
+        val bills = billDao.getAllBillsDirect()
+        val billItems = billDao.getAllBillItemsDirect()
+        val payments = paymentDao.getAllPaymentsDirect()
+        val suppliers = supplierDao.getAllSuppliersDirect()
+        val purchases = purchaseDao.getAllPurchasesDirect()
+        val purchaseItems = purchaseDao.getAllPurchaseItemsDirect()
+        val purchasePayments = purchasePaymentDao.getAllPurchasePaymentsDirect()
+
+        return AppBackupData(
+            companyProfile = profile,
+            customers = customers,
+            bills = bills,
+            billItems = billItems,
+            payments = payments,
+            suppliers = suppliers,
+            purchases = purchases,
+            purchaseItems = purchaseItems,
+            purchasePayments = purchasePayments
+        )
+    }
+
+    suspend fun restoreAllData(database: DoorDatabase, backupData: AppBackupData, clearExisting: Boolean) {
+        database.withTransaction {
+            if (clearExisting) {
+                billDao.deleteAllBillItems()
+                billDao.deleteAllBills()
+                paymentDao.deleteAll()
+                purchaseDao.deleteAllPurchaseItems()
+                purchaseDao.deleteAllPurchases()
+                purchasePaymentDao.deleteAll()
+                customerDao.deleteAll()
+                supplierDao.deleteAll()
+            }
+
+            backupData.companyProfile?.let { cp ->
+                companyProfileDao.insertOrUpdateCompanyProfile(cp)
+            }
+
+            if (backupData.customers.isNotEmpty()) {
+                customerDao.insertAll(backupData.customers)
+            }
+
+            if (backupData.suppliers.isNotEmpty()) {
+                supplierDao.insertAll(backupData.suppliers)
+            }
+
+            if (backupData.bills.isNotEmpty()) {
+                billDao.insertAllBills(backupData.bills)
+            }
+
+            if (backupData.billItems.isNotEmpty()) {
+                billDao.insertAllBillItems(backupData.billItems)
+            }
+
+            if (backupData.payments.isNotEmpty()) {
+                paymentDao.insertAll(backupData.payments)
+            }
+
+            if (backupData.purchases.isNotEmpty()) {
+                purchaseDao.insertAllPurchases(backupData.purchases)
+            }
+
+            if (backupData.purchaseItems.isNotEmpty()) {
+                purchaseDao.insertAllPurchaseItems(backupData.purchaseItems)
+            }
+
+            if (backupData.purchasePayments.isNotEmpty()) {
+                purchasePaymentDao.insertAll(backupData.purchasePayments)
+            }
+        }
+    }
 }
