@@ -57,15 +57,21 @@ fun DoorBillingMainApp(
 ) {
   val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
   val company by viewModel.companyProfile.collectAsStateWithLifecycle()
+  val isPinLockEnabled by viewModel.isPinLockEnabled.collectAsStateWithLifecycle()
+  val appSecurityPin by viewModel.appSecurityPin.collectAsStateWithLifecycle()
   val snackbarHostState = remember { SnackbarHostState() }
 
   var isAppLocked by remember { mutableStateOf(true) }
   var activeInvoicePreview by remember { mutableStateOf<BillWithItems?>(null) }
 
-  if (isAppLocked) {
+  if (isPinLockEnabled && isAppLocked) {
     AppLockScreen(
+      expectedPin = appSecurityPin,
       onUnlockSuccess = {
         isAppLocked = false
+      },
+      onResetPin = { verification ->
+        viewModel.resetPinWithMasterOrMobile(verification)
       }
     )
     return
@@ -78,9 +84,21 @@ fun DoorBillingMainApp(
     }
   }
 
-  // Handle hardware back button navigation
-  BackHandler(enabled = currentScreen != AppScreen.DASHBOARD) {
+  val context = androidx.compose.ui.platform.LocalContext.current
+  var lastBackPressTime by remember { mutableStateOf(0L) }
+
+  // Handle hardware back button navigation safely
+  BackHandler(enabled = true) {
     when (currentScreen) {
+      AppScreen.DASHBOARD -> {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastBackPressTime < 2000) {
+          (context as? android.app.Activity)?.finish()
+        } else {
+          lastBackPressTime = currentTime
+          android.widget.Toast.makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT).show()
+        }
+      }
       AppScreen.CUSTOMER_LEDGER -> viewModel.navigateTo(AppScreen.CUSTOMER_BALANCE)
       else -> viewModel.navigateTo(AppScreen.DASHBOARD)
     }
@@ -155,6 +173,9 @@ fun DoorBillingMainApp(
           onEdit = {
             activeInvoicePreview = null
             viewModel.startEditBill(billWithItems)
+          },
+          onConvertToInvoice = {
+            viewModel.convertQuotationToInvoice(billWithItems)
           }
         )
       }

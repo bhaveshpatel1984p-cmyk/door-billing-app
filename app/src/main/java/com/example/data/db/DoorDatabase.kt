@@ -20,9 +20,10 @@ import kotlinx.coroutines.launch
         SupplierEntity::class,
         PurchaseEntity::class,
         PurchaseItemEntity::class,
-        PurchasePaymentEntity::class
+        PurchasePaymentEntity::class,
+        DoorPresetEntity::class
     ],
-    version = 6,
+    version = 8,
     exportSchema = false
 )
 abstract class DoorDatabase : RoomDatabase() {
@@ -33,6 +34,7 @@ abstract class DoorDatabase : RoomDatabase() {
     abstract fun supplierDao(): SupplierDao
     abstract fun purchaseDao(): PurchaseDao
     abstract fun purchasePaymentDao(): PurchasePaymentDao
+    abstract fun doorPresetDao(): DoorPresetDao
 
     companion object {
         @Volatile
@@ -137,6 +139,29 @@ abstract class DoorDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE bills ADD COLUMN isQuotation INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS door_presets (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "name TEXT NOT NULL, " +
+                            "defaultRate REAL NOT NULL, " +
+                            "defaultHsn TEXT NOT NULL, " +
+                            "defaultHeight REAL NOT NULL, " +
+                            "defaultWidth REAL NOT NULL, " +
+                            "createdAt INTEGER NOT NULL)"
+                )
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE company_profile ADD COLUMN addressLine2 TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE company_profile ADD COLUMN alternateMobile TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): DoorDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -144,7 +169,7 @@ abstract class DoorDatabase : RoomDatabase() {
                     DoorDatabase::class.java,
                     "door_billing_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {

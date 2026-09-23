@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,22 +28,29 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DoorBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PinDrop
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -57,6 +65,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -77,6 +86,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -97,8 +107,16 @@ fun CompanyProfileScreen(
 
     var businessName by remember(profileState) { mutableStateOf(profileState.businessName) }
     var address by remember(profileState) { mutableStateOf(profileState.address) }
+    var addressLine2 by remember(profileState) { mutableStateOf(profileState.addressLine2) }
     var gstNo by remember(profileState) { mutableStateOf(profileState.gstNo) }
     var mobile by remember(profileState) { mutableStateOf(profileState.mobile) }
+    var additionalMobiles by remember(profileState) {
+        val list = profileState.alternateMobile
+            .split(",", "/", ";", "\n")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        mutableStateOf(list)
+    }
     var email by remember(profileState) { mutableStateOf(profileState.email) }
     var pan by remember(profileState) { mutableStateOf(profileState.pan) }
     var state by remember(profileState) { mutableStateOf(profileState.state) }
@@ -111,6 +129,13 @@ fun CompanyProfileScreen(
     var logoUri by remember(profileState) { mutableStateOf(profileState.logoUri) }
     var qrCodeUri by remember(profileState) { mutableStateOf(profileState.qrCodeUri) }
     var upiId by remember(profileState) { mutableStateOf(profileState.upiId) }
+
+    val isPinLockEnabled by viewModel.isPinLockEnabled.collectAsStateWithLifecycle()
+    var showChangePinDialog by remember { mutableStateOf(false) }
+    var oldPinInput by remember { mutableStateOf("") }
+    var newPinInput by remember { mutableStateOf("") }
+    var confirmPinInput by remember { mutableStateOf("") }
+    var pinChangeError by remember { mutableStateOf<String?>(null) }
 
     // Android Photo Picker for company logo (zero permissions required)
     // Copies image permanently into internal storage to avoid permission revocation
@@ -312,17 +337,30 @@ fun CompanyProfileScreen(
                             modifier = Modifier.fillMaxWidth().testTag("company_name_input")
                         )
 
-                        // 2) Address
+                        // 2) Address Line 1
                         OutlinedTextField(
                             value = address,
                             onValueChange = { address = it },
-                            label = { Text("Business Address *") },
-                            placeholder = { Text("Plot No 12, Timber Market, Main Road") },
+                            label = { Text("Business Address (Line 1) *") },
+                            placeholder = { Text("Plot No 12, Industrial Area, Timber Market") },
                             leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
                             singleLine = false,
-                            maxLines = 3,
+                            maxLines = 2,
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().testTag("company_address_line1_input")
+                        )
+
+                        // 2b) Address Line 2 (Optional)
+                        OutlinedTextField(
+                            value = addressLine2,
+                            onValueChange = { addressLine2 = it },
+                            label = { Text("Address Line 2 (Optional - Area / Landmark / Road)") },
+                            placeholder = { Text("Near Railway Crossing, Ring Road, Kudachi") },
+                            leadingIcon = { Icon(Icons.Default.AddLocationAlt, contentDescription = null) },
+                            singleLine = false,
+                            maxLines = 2,
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth().testTag("company_address_line2_input")
                         )
 
                         // 3) GST No & 4) PAN No
@@ -352,32 +390,150 @@ fun CompanyProfileScreen(
                             )
                         }
 
-                        // 5) Mobile & 6) Email
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = mobile,
-                                onValueChange = { mobile = it },
-                                label = { Text("Mobile No *") },
-                                placeholder = { Text("9876543210") },
-                                leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
-                                modifier = Modifier.weight(1f)
-                            )
+                        // 5) Email Address
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = { email = it },
+                            label = { Text("Email Address (Optional)") },
+                            placeholder = { Text("info@doormart.com") },
+                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
-                            OutlinedTextField(
-                                value = email,
-                                onValueChange = { email = it },
-                                label = { Text("Email Address") },
-                                placeholder = { Text("info@doormart.com") },
-                                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                                modifier = Modifier.weight(1f)
-                            )
+                        // 6) Multiple Mobile Numbers Section
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.Phone,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "CONTACT MOBILE NUMBERS",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text(
+                                            text = "${1 + additionalMobiles.size} Numbers",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = "Yahan aap ek se jyada mobile numbers add kar sakte hain (e.g. Office, WhatsApp, Dispatch). Sabhi bill par print honge.",
+                                    fontSize = 11.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                // Primary Mobile Number
+                                OutlinedTextField(
+                                    value = mobile,
+                                    onValueChange = { mobile = it },
+                                    label = { Text("Primary Mobile No *") },
+                                    placeholder = { Text("e.g. 9876543210 (Main Owner)") },
+                                    leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
+                                    modifier = Modifier.fillMaxWidth().testTag("primary_mobile_input")
+                                )
+
+                                // Additional Mobile Numbers List
+                                additionalMobiles.forEachIndexed { index, extraNumber ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = extraNumber,
+                                            onValueChange = { newText ->
+                                                val updatedList = additionalMobiles.toMutableList()
+                                                updatedList[index] = newText
+                                                additionalMobiles = updatedList
+                                            },
+                                            label = { Text("Alternate Mobile ${index + 1} (Optional)") },
+                                            placeholder = { Text("e.g. 9825012345 (Office / WhatsApp)") },
+                                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = MaterialTheme.colorScheme.secondary) },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
+                                            modifier = Modifier.weight(1f).testTag("additional_mobile_input_$index")
+                                        )
+
+                                        IconButton(
+                                            onClick = {
+                                                val updatedList = additionalMobiles.toMutableList()
+                                                updatedList.removeAt(index)
+                                                additionalMobiles = updatedList
+                                            },
+                                            modifier = Modifier.testTag("remove_mobile_button_$index")
+                                        ) {
+                                            Icon(
+                                                Icons.Default.DeleteOutline,
+                                                contentDescription = "Remove this number",
+                                                tint = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Add Another Mobile Button
+                                OutlinedButton(
+                                    onClick = {
+                                        additionalMobiles = additionalMobiles + ""
+                                    },
+                                    modifier = Modifier.fillMaxWidth().testTag("add_another_mobile_button"),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("+ Add Another Mobile Number", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                }
+
+                                // Live display preview
+                                val combinedDisplay = buildList {
+                                    if (mobile.isNotBlank()) add(mobile.trim())
+                                    additionalMobiles.filter { it.isNotBlank() }.forEach { add(it.trim()) }
+                                }.joinToString(", ")
+
+                                if (combinedDisplay.isNotBlank()) {
+                                    Text(
+                                        text = "📄 Invoices & Print Par: 📞 $combinedDisplay",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         }
 
                         // 7) State & 8) State Code
@@ -704,15 +860,91 @@ fun CompanyProfileScreen(
                 }
             }
 
+            // 5. App Security & PIN Lock Card
+            item {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "APP SECURITY & PIN LOCK",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                )
+                            }
+                            Switch(
+                                checked = isPinLockEnabled,
+                                onCheckedChange = { viewModel.setPinLockEnabled(it) }
+                            )
+                        }
+
+                        Text(
+                            text = if (isPinLockEnabled)
+                                "✓ App launch hone par 4-digit security PIN maangega. Aapka data surakshit hai."
+                            else
+                                "✕ PIN lock band hai. App bina kisi password ke seedha open hoga.",
+                            fontSize = 12.sp,
+                            color = if (isPinLockEnabled) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        if (isPinLockEnabled) {
+                            OutlinedButton(
+                                onClick = {
+                                    oldPinInput = ""
+                                    newPinInput = ""
+                                    confirmPinInput = ""
+                                    pinChangeError = null
+                                    showChangePinDialog = true
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Change 4-Digit Security PIN", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
             // Save Button
             item {
                 Button(
                     onClick = {
+                        val cleanAdditional = additionalMobiles
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .joinToString(", ")
+
                         val updated = profileState.copy(
                             businessName = businessName.trim().ifBlank { "Door Craft & Billing" },
                             address = address.trim(),
+                            addressLine2 = addressLine2.trim(),
                             gstNo = gstNo.trim().uppercase(),
                             mobile = mobile.trim(),
+                            alternateMobile = cleanAdditional,
                             email = email.trim(),
                             pan = pan.trim().uppercase(),
                             state = state.trim(),
@@ -787,5 +1019,109 @@ fun CompanyProfileScreen(
                 }
             }
         }
+    }
+
+    if (showChangePinDialog) {
+        AlertDialog(
+            onDismissRequest = { showChangePinDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LockReset, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Change Security PIN", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Naya 4-digit security PIN set karein:",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = oldPinInput,
+                        onValueChange = {
+                            if (it.length <= 4 && it.all { ch -> ch.isDigit() }) oldPinInput = it
+                            pinChangeError = null
+                        },
+                        label = { Text("Current PIN (Purana PIN)") },
+                        placeholder = { Text("Default: 1100") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = newPinInput,
+                        onValueChange = {
+                            if (it.length <= 4 && it.all { ch -> ch.isDigit() }) newPinInput = it
+                            pinChangeError = null
+                        },
+                        label = { Text("New 4-Digit PIN (Naya PIN)") },
+                        placeholder = { Text("4 Digits") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = confirmPinInput,
+                        onValueChange = {
+                            if (it.length <= 4 && it.all { ch -> ch.isDigit() }) confirmPinInput = it
+                            pinChangeError = null
+                        },
+                        label = { Text("Confirm New PIN (Dobara Naya PIN)") },
+                        placeholder = { Text("4 Digits") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (pinChangeError != null) {
+                        Text(
+                            text = pinChangeError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (oldPinInput.isBlank()) {
+                            pinChangeError = "Please enter current PIN"
+                            return@Button
+                        }
+                        if (newPinInput.length != 4) {
+                            pinChangeError = "New PIN must be exactly 4 digits"
+                            return@Button
+                        }
+                        if (newPinInput != confirmPinInput) {
+                            pinChangeError = "New PIN and Confirm PIN do not match!"
+                            return@Button
+                        }
+                        val success = viewModel.updateSecurityPin(oldPinInput, newPinInput)
+                        if (success) {
+                            showChangePinDialog = false
+                        } else {
+                            pinChangeError = "Current PIN is incorrect!"
+                        }
+                    }
+                ) {
+                    Text("Save New PIN")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showChangePinDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

@@ -91,6 +91,9 @@ interface BillDao {
     @Query("SELECT COUNT(*) FROM bills")
     suspend fun getTotalBillsCount(): Int
 
+    @Query("UPDATE bills SET isQuotation = 0, invoiceNo = :newInvoiceNo WHERE id = :billId")
+    suspend fun convertQuotationToInvoice(billId: Long, newInvoiceNo: String)
+
     @Query("SELECT COALESCE(SUM(grandTotal), 0.0) FROM bills WHERE customerId = :customerId")
     suspend fun getCustomerTotalBilled(customerId: Long): Double
 
@@ -293,5 +296,26 @@ interface PurchasePaymentDao {
 
     @Query("DELETE FROM purchase_payments")
     suspend fun deleteAll()
+}
+
+@Dao
+interface DoorPresetDao {
+    @Query("SELECT * FROM door_presets ORDER BY name ASC")
+    fun getAllPresets(): Flow<List<DoorPresetEntity>>
+
+    @Query("SELECT COUNT(*) FROM door_presets")
+    suspend fun getPresetsCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPreset(preset: DoorPresetEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPresets(presets: List<DoorPresetEntity>)
+
+    @Update
+    suspend fun updatePreset(preset: DoorPresetEntity)
+
+    @Delete
+    suspend fun deletePreset(preset: DoorPresetEntity)
 }
 

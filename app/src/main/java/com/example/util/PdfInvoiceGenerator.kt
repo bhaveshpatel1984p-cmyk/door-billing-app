@@ -14,6 +14,7 @@ import com.example.data.db.BillWithItems
 import com.example.data.db.CompanyProfileEntity
 import com.example.data.db.CustomerEntity
 import com.example.data.db.LedgerEntry
+import com.example.data.db.PaymentEntity
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
@@ -104,7 +105,7 @@ object PdfInvoiceGenerator {
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.textSize = 10.5f
         textPaint.color = Color.parseColor("#0369A1")
-        val titleText = "TAX INVOICE / BILL OF SUPPLY"
+        val titleText = if (bill.isQuotation) "ESTIMATE / QUOTATION" else "TAX INVOICE / BILL OF SUPPLY"
         canvas.drawText(titleText, margin + 10f, margin + 15f, textPaint)
 
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
@@ -168,13 +169,13 @@ object PdfInvoiceGenerator {
         textPaint.typeface = Typeface.DEFAULT
         textPaint.textSize = 7.5f
         textPaint.color = Color.parseColor("#334155")
-        canvas.drawText(company.address, textStartX, currentY + 26f, textPaint)
+        canvas.drawText(company.fullAddress, textStartX, currentY + 26f, textPaint)
 
         val taxInfo = "GSTIN: ${company.gstNo} | PAN: ${company.pan}"
         canvas.drawText(taxInfo, textStartX, currentY + 36f, textPaint)
 
         val contactInfo = buildString {
-            append("Mobile: ${company.mobile}")
+            append("Mobile: ${company.displayMobile}")
             if (company.email.isNotBlank()) {
                 append(" | Email: ${company.email}")
             }
@@ -186,7 +187,7 @@ object PdfInvoiceGenerator {
         textPaint.textSize = 8f
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.color = Color.parseColor("#334155")
-        canvas.drawText("Invoice No:", colSplitX + 8f, currentY + 18f, textPaint)
+        canvas.drawText(if (bill.isQuotation) "Quote No:" else "Invoice No:", colSplitX + 8f, currentY + 18f, textPaint)
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.color = Color.parseColor("#0284C7")
         textPaint.textSize = 9.5f
@@ -722,7 +723,7 @@ object PdfInvoiceGenerator {
         textPaint.typeface = Typeface.DEFAULT
         textPaint.textSize = 7.5f
         textPaint.color = Color.parseColor("#E2E8F0")
-        canvas.drawText("${company.address} • Phone: ${company.mobile}", margin + 12f, margin + 35f, textPaint)
+        canvas.drawText("${company.fullAddress} • Phone: ${company.displayMobile}", margin + 12f, margin + 35f, textPaint)
         if (company.gstNo.isNotBlank()) {
             canvas.drawText("GSTIN: ${company.gstNo}", margin + 12f, margin + 47f, textPaint)
         }
@@ -941,4 +942,460 @@ object PdfInvoiceGenerator {
         val jW = textPaint.measureText(jText)
         canvas.drawText(jText, (pageWidth - jW) / 2f, pageHeight - margin - 8f, textPaint)
     }
+
+    /**
+     * Generates a crisp A4 PDF for Delivery Challan / Dispatch Slip.
+     */
+    fun generateDeliveryChallanPdf(
+        context: Context,
+        billWithItems: BillWithItems,
+        company: CompanyProfileEntity,
+        vehicleNo: String = "",
+        transportName: String = ""
+    ): File {
+        val dir = File(context.cacheDir, "challans").apply { if (!exists()) mkdirs() }
+        val safeChallanNo = billWithItems.bill.invoiceNo.replace("/", "_").replace("\\", "_")
+        val pdfFile = File(dir, "Challan_$safeChallanNo.pdf")
+
+        val document = PdfDocument()
+        val pageWidth = 595
+        val pageHeight = 842
+        val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
+        val page = document.startPage(pageInfo)
+        val canvas: Canvas = page.canvas
+
+        drawDeliveryChallan(canvas, pageWidth.toFloat(), pageHeight.toFloat(), billWithItems, company, vehicleNo, transportName)
+
+        document.finishPage(page)
+        FileOutputStream(pdfFile).use { out -> document.writeTo(out) }
+        document.close()
+        return pdfFile
+    }
+
+    private fun drawDeliveryChallan(
+        canvas: Canvas,
+        pageWidth: Float,
+        pageHeight: Float,
+        billWithItems: BillWithItems,
+        company: CompanyProfileEntity,
+        vehicleNo: String,
+        transportName: String
+    ) {
+        val bill = billWithItems.bill
+        val items = billWithItems.items
+        val margin = 20f
+        val contentWidth = pageWidth - (margin * 2)
+
+        val borderPaint = Paint().apply {
+            color = Color.parseColor("#0284C7")
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            isAntiAlias = true
+        }
+        val fillPaint = Paint().apply { isAntiAlias = true }
+        val linePaint = Paint().apply {
+            color = Color.parseColor("#94A3B8")
+            strokeWidth = 0.8f
+            isAntiAlias = true
+        }
+        val textPaint = Paint().apply {
+            isAntiAlias = true
+            color = Color.parseColor("#0F172A")
+        }
+
+        // Outer Border
+        canvas.drawRect(margin, margin, pageWidth - margin, pageHeight - margin, borderPaint)
+
+        // 1. Top Title Bar
+        val titleH = 22f
+        fillPaint.color = Color.parseColor("#DCEEF8")
+        canvas.drawRect(margin, margin, pageWidth - margin, margin + titleH, fillPaint)
+        canvas.drawLine(margin, margin + titleH, pageWidth - margin, margin + titleH, borderPaint)
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 10.5f
+        textPaint.color = Color.parseColor("#0369A1")
+        canvas.drawText("DELIVERY CHALLAN / GATE PASS (DISPATCH SLIP)", margin + 10f, margin + 15f, textPaint)
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+        textPaint.textSize = 8f
+        textPaint.color = Color.parseColor("#475569")
+        val sub = "(Goods Movement & Material Dispatch)"
+        canvas.drawText(sub, pageWidth - margin - textPaint.measureText(sub) - 10f, margin + 15f, textPaint)
+
+        // 2. Header & Meta Row
+        var curY = margin + titleH
+        val colSplitX = margin + (contentWidth * 0.58f)
+        val row1H = 75f
+
+        fillPaint.color = Color.parseColor("#EEF5F9")
+        canvas.drawRect(margin, curY, colSplitX, curY + row1H, fillPaint)
+        fillPaint.color = Color.parseColor("#D3E3ED")
+        canvas.drawRect(colSplitX, curY, pageWidth - margin, curY + row1H, fillPaint)
+        canvas.drawLine(colSplitX, curY, colSplitX, curY + row1H, borderPaint)
+
+        // Left: Manufacturer
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 12f
+        textPaint.color = Color.parseColor("#0369A1")
+        canvas.drawText(company.businessName.uppercase(Locale.ROOT), margin + 8f, curY + 16f, textPaint)
+
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.textSize = 7.5f
+        textPaint.color = Color.parseColor("#334155")
+        canvas.drawText(company.fullAddress, margin + 8f, curY + 28f, textPaint)
+        canvas.drawText("GSTIN: ${company.gstNo} | Mobile: ${company.displayMobile}", margin + 8f, curY + 40f, textPaint)
+
+        // Consignee section inside row 1
+        canvas.drawLine(margin + 8f, curY + 46f, colSplitX - 8f, curY + 46f, linePaint)
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 7.5f
+        textPaint.color = Color.parseColor("#0369A1")
+        canvas.drawText("CONSIGNEE / DELIVER TO: ${bill.customerName}", margin + 8f, curY + 58f, textPaint)
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.color = Color.parseColor("#334155")
+        canvas.drawText("Site: ${bill.customerAddress.ifBlank { "As per order" }} | Mob: ${bill.customerMobile.ifBlank { "N/A" }}", margin + 8f, curY + 69f, textPaint)
+
+        // Right: Dispatch Details
+        val challanNo = "DC/" + bill.invoiceNo.removePrefix("INV/").removePrefix("EST/")
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 8f
+        textPaint.color = Color.parseColor("#334155")
+        canvas.drawText("Challan No:", colSplitX + 8f, curY + 16f, textPaint)
+        textPaint.color = Color.parseColor("#0284C7")
+        canvas.drawText(challanNo, colSplitX + 68f, curY + 16f, textPaint)
+
+        textPaint.color = Color.parseColor("#334155")
+        canvas.drawText("Dispatch Date:", colSplitX + 8f, curY + 30f, textPaint)
+        textPaint.color = Color.parseColor("#0F172A")
+        canvas.drawText(DimensionCalculator.formatDate(bill.dateMillis), colSplitX + 68f, curY + 30f, textPaint)
+
+        textPaint.color = Color.parseColor("#334155")
+        canvas.drawText("Order / Ref:", colSplitX + 8f, curY + 44f, textPaint)
+        textPaint.color = Color.parseColor("#0F172A")
+        canvas.drawText(bill.invoiceNo, colSplitX + 68f, curY + 44f, textPaint)
+
+        textPaint.color = Color.parseColor("#334155")
+        canvas.drawText("Vehicle No:", colSplitX + 8f, curY + 58f, textPaint)
+        textPaint.color = Color.parseColor("#0F172A")
+        canvas.drawText(vehicleNo.ifBlank { "Local Transport" }, colSplitX + 68f, curY + 58f, textPaint)
+
+        textPaint.color = Color.parseColor("#334155")
+        canvas.drawText("Transporter:", colSplitX + 8f, curY + 71f, textPaint)
+        textPaint.color = Color.parseColor("#0F172A")
+        canvas.drawText(transportName.ifBlank { "Factory Direct" }, colSplitX + 68f, curY + 71f, textPaint)
+
+        curY += row1H
+        canvas.drawLine(margin, curY, pageWidth - margin, curY, borderPaint)
+
+        // 3. Table Header
+        val thH = 20f
+        fillPaint.color = Color.parseColor("#0369A1")
+        canvas.drawRect(margin, curY, pageWidth - margin, curY + thH, fillPaint)
+
+        val col1 = margin + 28f
+        val col2 = margin + 230f
+        val col3 = margin + 280f
+        val col4 = margin + 380f
+        val col5 = margin + 445f
+        val col6 = margin + 510f
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 8f
+        textPaint.color = Color.WHITE
+        canvas.drawText("S.N.", margin + 6f, curY + 13f, textPaint)
+        canvas.drawText("Door Description / Model", col1 + 6f, curY + 13f, textPaint)
+        canvas.drawText("HSN", col2 + 6f, curY + 13f, textPaint)
+        canvas.drawText("Size (H × W)", col3 + 6f, curY + 13f, textPaint)
+        canvas.drawText("Qty (Pcs)", col4 + 6f, curY + 13f, textPaint)
+        canvas.drawText("Sq.Ft", col5 + 6f, curY + 13f, textPaint)
+        canvas.drawText("Status", col6 + 6f, curY + 13f, textPaint)
+
+        curY += thH
+
+        // Items
+        val itemRowH = 22f
+        var totalQty = 0
+        var totalSqFt = 0.0
+
+        items.forEachIndexed { idx, item ->
+            totalQty += item.qty
+            totalSqFt += item.sqFt
+
+            if (idx % 2 == 1) {
+                fillPaint.color = Color.parseColor("#F8FAFC")
+                canvas.drawRect(margin, curY, pageWidth - margin, curY + itemRowH, fillPaint)
+            }
+            canvas.drawLine(margin, curY + itemRowH, pageWidth - margin, curY + itemRowH, linePaint)
+
+            textPaint.typeface = Typeface.DEFAULT
+            textPaint.textSize = 8f
+            textPaint.color = Color.parseColor("#0F172A")
+            canvas.drawText(item.slNo.toString(), margin + 8f, curY + 14f, textPaint)
+
+            val partFirstLine = item.particular.lines().firstOrNull() ?: item.particular
+            canvas.drawText(partFirstLine.take(34), col1 + 6f, curY + 14f, textPaint)
+
+            textPaint.color = Color.parseColor("#475569")
+            canvas.drawText(item.hsnSac, col2 + 6f, curY + 14f, textPaint)
+
+            textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textPaint.color = Color.parseColor("#0F172A")
+            canvas.drawText("${DimensionCalculator.formatDimension(item.height)} × ${DimensionCalculator.formatDimension(item.width)} ${bill.dimensionUnit}", col3 + 6f, curY + 14f, textPaint)
+
+            textPaint.color = Color.parseColor("#0369A1")
+            canvas.drawText("${item.qty} Pcs", col4 + 6f, curY + 14f, textPaint)
+
+            textPaint.color = Color.parseColor("#0F172A")
+            canvas.drawText(String.format(Locale.US, "%.2f", item.sqFt), col5 + 6f, curY + 14f, textPaint)
+
+            textPaint.typeface = Typeface.DEFAULT
+            textPaint.color = Color.parseColor("#16A34A")
+            canvas.drawText("OK", col6 + 6f, curY + 14f, textPaint)
+
+            curY += itemRowH
+        }
+
+        // Total Row
+        val totH = 22f
+        fillPaint.color = Color.parseColor("#EFF6FF")
+        canvas.drawRect(margin, curY, pageWidth - margin, curY + totH, fillPaint)
+        canvas.drawLine(margin, curY + totH, pageWidth - margin, curY + totH, borderPaint)
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 8.5f
+        textPaint.color = Color.parseColor("#0369A1")
+        canvas.drawText("TOTAL DISPATCHED:", col3 - 60f, curY + 14f, textPaint)
+        canvas.drawText("$totalQty Doors", col4 + 6f, curY + 14f, textPaint)
+        canvas.drawText(String.format(Locale.US, "%.2f Sq.Ft", totalSqFt), col5 + 6f, curY + 14f, textPaint)
+
+        curY += totH + 14f
+
+        // Notes box
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.textSize = 7f
+        textPaint.color = Color.parseColor("#475569")
+        canvas.drawText("1. Goods dispatched in sound & undamaged condition. Please verify sizes & count at the time of delivery.", margin + 12f, curY, textPaint)
+        canvas.drawText("2. This Delivery Challan is for transport & verification purposes.", margin + 12f, curY + 12f, textPaint)
+
+        // Signatures at bottom
+        val signY = pageHeight - margin - 50f
+        canvas.drawLine(margin + 16f, signY, margin + 140f, signY, linePaint)
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 7.5f
+        textPaint.color = Color.parseColor("#0F172A")
+        canvas.drawText("RECEIVER'S SIGN & STAMP", margin + 16f, signY + 12f, textPaint)
+
+        canvas.drawLine(margin + 190f, signY, margin + 330f, signY, linePaint)
+        canvas.drawText("DRIVER / TRANSPORTER SIGN", margin + 190f, signY + 12f, textPaint)
+
+        canvas.drawLine(pageWidth - margin - 150f, signY, pageWidth - margin - 16f, signY, linePaint)
+        canvas.drawText("AUTHORIZED DISPATCHER", pageWidth - margin - 146f, signY + 12f, textPaint)
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.textSize = 6.5f
+        textPaint.color = Color.parseColor("#475569")
+        canvas.drawText("For ${company.businessName}", pageWidth - margin - 146f, signY - 8f, textPaint)
+    }
+
+    /**
+     * Generates a crisp A4 PDF for Payment Receipt / Money Voucher.
+     */
+    fun generatePaymentReceiptPdf(
+        context: Context,
+        payment: PaymentEntity,
+        customerName: String,
+        customerMobile: String,
+        company: CompanyProfileEntity,
+        previousBalance: Double,
+        remainingBalance: Double
+    ): File {
+        val dir = File(context.cacheDir, "receipts").apply { if (!exists()) mkdirs() }
+        val pdfFile = File(dir, "Receipt_${payment.id}.pdf")
+
+        val document = PdfDocument()
+        val pageWidth = 595
+        val pageHeight = 842
+        val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
+        val page = document.startPage(pageInfo)
+        val canvas: Canvas = page.canvas
+
+        drawPaymentReceipt(canvas, pageWidth.toFloat(), pageHeight.toFloat(), payment, customerName, customerMobile, company, previousBalance, remainingBalance)
+
+        document.finishPage(page)
+        FileOutputStream(pdfFile).use { out -> document.writeTo(out) }
+        document.close()
+        return pdfFile
+    }
+
+    private fun drawPaymentReceipt(
+        canvas: Canvas,
+        pageWidth: Float,
+        pageHeight: Float,
+        payment: PaymentEntity,
+        customerName: String,
+        customerMobile: String,
+        company: CompanyProfileEntity,
+        previousBalance: Double,
+        remainingBalance: Double
+    ) {
+        val margin = 30f
+        val contentWidth = pageWidth - (margin * 2)
+
+        val borderPaint = Paint().apply {
+            color = Color.parseColor("#16A34A")
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            isAntiAlias = true
+        }
+        val fillPaint = Paint().apply { isAntiAlias = true }
+        val linePaint = Paint().apply {
+            color = Color.parseColor("#CBD5E1")
+            strokeWidth = 0.8f
+            isAntiAlias = true
+        }
+        val textPaint = Paint().apply {
+            isAntiAlias = true
+            color = Color.parseColor("#0F172A")
+        }
+
+        // Draw Card Border
+        val cardBottom = margin + 460f
+        canvas.drawRoundRect(margin, margin, pageWidth - margin, cardBottom, 8f, 8f, borderPaint)
+
+        // Top Banner
+        val topH = 34f
+        fillPaint.color = Color.parseColor("#DCFCE7")
+        canvas.drawRoundRect(margin, margin, pageWidth - margin, margin + topH, 8f, 8f, fillPaint)
+        canvas.drawLine(margin, margin + topH, pageWidth - margin, margin + topH, borderPaint)
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 12f
+        textPaint.color = Color.parseColor("#15803D")
+        canvas.drawText("PAYMENT RECEIPT / MONEY VOUCHER", margin + 16f, margin + 22f, textPaint)
+
+        val rcptNo = "REC-${payment.id.toString().padStart(4, '0')}"
+        textPaint.textSize = 10f
+        textPaint.color = Color.parseColor("#0F172A")
+        val rcptW = textPaint.measureText("Receipt: $rcptNo")
+        canvas.drawText("Receipt: $rcptNo", pageWidth - margin - rcptW - 16f, margin + 22f, textPaint)
+
+        // Company Details
+        var curY = margin + topH + 20f
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 15f
+        textPaint.color = Color.parseColor("#15803D")
+        canvas.drawText(company.businessName.uppercase(Locale.ROOT), margin + 16f, curY, textPaint)
+
+        curY += 14f
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.textSize = 8.5f
+        textPaint.color = Color.parseColor("#475569")
+        canvas.drawText("${company.fullAddress} | Phone: ${company.displayMobile}", margin + 16f, curY, textPaint)
+        curY += 12f
+        canvas.drawText("GSTIN: ${company.gstNo} | Date: ${DimensionCalculator.formatDate(payment.dateMillis)}", margin + 16f, curY, textPaint)
+
+        curY += 12f
+        canvas.drawLine(margin + 16f, curY, pageWidth - margin - 16f, curY, linePaint)
+
+        // Received From & Mode
+        curY += 20f
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 9.5f
+        textPaint.color = Color.parseColor("#475569")
+        canvas.drawText("Received With Thanks From:", margin + 16f, curY, textPaint)
+
+        textPaint.color = Color.parseColor("#0F172A")
+        textPaint.textSize = 12f
+        canvas.drawText("$customerName ${if (customerMobile.isNotBlank()) "($customerMobile)" else ""}", margin + 160f, curY, textPaint)
+
+        curY += 22f
+        textPaint.textSize = 9.5f
+        textPaint.color = Color.parseColor("#475569")
+        canvas.drawText("Payment Mode & Reference:", margin + 16f, curY, textPaint)
+
+        textPaint.color = Color.parseColor("#15803D")
+        textPaint.textSize = 10f
+        val modeRef = "${payment.paymentMode} ${if (payment.referenceNo.isNotBlank()) " (Ref / UTR: " + payment.referenceNo + ")" else ""}"
+        canvas.drawText(modeRef, margin + 160f, curY, textPaint)
+
+        curY += 20f
+        textPaint.color = Color.parseColor("#475569")
+        canvas.drawText("Remarks / Notes:", margin + 16f, curY, textPaint)
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.color = Color.parseColor("#334155")
+        canvas.drawText(payment.notes.ifBlank { "Account settlement" }, margin + 160f, curY, textPaint)
+
+        // Amount Box
+        curY += 24f
+        fillPaint.color = Color.parseColor("#15803D")
+        canvas.drawRoundRect(margin + 16f, curY, pageWidth - margin - 16f, curY + 44f, 6f, 6f, fillPaint)
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 9f
+        textPaint.color = Color.WHITE
+        canvas.drawText("AMOUNT RECEIVED:", margin + 28f, curY + 18f, textPaint)
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+        textPaint.textSize = 8f
+        val inWords = DimensionCalculator.convertToIndianCurrencyWords(payment.amount)
+        canvas.drawText(inWords.take(45), margin + 28f, curY + 34f, textPaint)
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 18f
+        val amtStr = "₹ " + String.format(Locale.US, "%,.2f", payment.amount)
+        val amtW = textPaint.measureText(amtStr)
+        canvas.drawText(amtStr, pageWidth - margin - 28f - amtW, curY + 28f, textPaint)
+
+        // Ledger Balance Summary Table
+        curY += 60f
+        fillPaint.color = Color.parseColor("#F8FAFC")
+        canvas.drawRoundRect(margin + 16f, curY, pageWidth - margin - 16f, curY + 68f, 6f, 6f, fillPaint)
+        canvas.drawRoundRect(margin + 16f, curY, pageWidth - margin - 16f, curY + 68f, 6f, 6f, linePaint)
+
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.textSize = 8.5f
+        textPaint.color = Color.parseColor("#475569")
+        canvas.drawText("Previous Outstanding Balance:", margin + 28f, curY + 18f, textPaint)
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.color = Color.parseColor("#0F172A")
+        val pbStr = "₹ " + String.format(Locale.US, "%.2f", previousBalance)
+        canvas.drawText(pbStr, pageWidth - margin - 28f - textPaint.measureText(pbStr), curY + 18f, textPaint)
+
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.color = Color.parseColor("#15803D")
+        canvas.drawText("Amount Received Now:", margin + 28f, curY + 36f, textPaint)
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val recStr = "- ₹ " + String.format(Locale.US, "%.2f", payment.amount)
+        canvas.drawText(recStr, pageWidth - margin - 28f - textPaint.measureText(recStr), curY + 36f, textPaint)
+
+        canvas.drawLine(margin + 24f, curY + 44f, pageWidth - margin - 24f, curY + 44f, linePaint)
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 9.5f
+        textPaint.color = Color.parseColor("#0F172A")
+        canvas.drawText("Current Remaining Balance:", margin + 28f, curY + 58f, textPaint)
+        val remColor = if (remainingBalance > 0) Color.parseColor("#B91C1C") else Color.parseColor("#15803D")
+        textPaint.color = remColor
+        val remStr = "₹ " + String.format(Locale.US, "%.2f", remainingBalance)
+        canvas.drawText(remStr, pageWidth - margin - 28f - textPaint.measureText(remStr), curY + 58f, textPaint)
+
+        // Signatures
+        val signY = cardBottom - 45f
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.textSize = 7f
+        textPaint.color = Color.parseColor("#64748B")
+        canvas.drawText("Thank you for your business!", margin + 16f, signY + 16f, textPaint)
+        canvas.drawText("This is an authorized payment acknowledgement.", margin + 16f, signY + 28f, textPaint)
+
+        canvas.drawLine(pageWidth - margin - 150f, signY + 16f, pageWidth - margin - 16f, signY + 16f, linePaint)
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 8f
+        textPaint.color = Color.parseColor("#0F172A")
+        canvas.drawText("AUTHORIZED SIGNATORY", pageWidth - margin - 146f, signY + 28f, textPaint)
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.textSize = 7f
+        textPaint.color = Color.parseColor("#475569")
+        canvas.drawText("For ${company.businessName}", pageWidth - margin - 146f, signY + 6f, textPaint)
+    }
 }
+

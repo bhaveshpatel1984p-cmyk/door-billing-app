@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -138,6 +140,9 @@ fun NewEntryScreen(
     var billSavedShareTarget by remember { mutableStateOf<BillWithItems?>(null) }
     var showPreviousBalanceDialog by remember { mutableStateOf(false) }
     var prevBalanceInput by remember { mutableStateOf("") }
+    val isQuotation by viewModel.isQuotationDraft.collectAsStateWithLifecycle()
+    val allDoorPresets by viewModel.allDoorPresets.collectAsStateWithLifecycle()
+    var showPresetManagerDialog by remember { mutableStateOf(false) }
 
     // Live calculations for current line item
     val liveHeight = heightStr.toDoubleOrNull() ?: 0.0
@@ -202,6 +207,89 @@ fun NewEntryScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Document Type Selector: Tax Invoice vs Quotation / Estimate
+            item {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (!isQuotation) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { viewModel.toggleBillType(false) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Print,
+                                        contentDescription = null,
+                                        tint = if (!isQuotation) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "TAX INVOICE",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp,
+                                        color = if (!isQuotation) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isQuotation) Color(0xFFD97706) else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { viewModel.toggleBillType(true) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Calculate,
+                                        contentDescription = null,
+                                        tint = if (isQuotation) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "ESTIMATE / QUOTE",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp,
+                                        color = if (isQuotation) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        if (isQuotation) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "📑 Quotation Mode: Bill will be titled 'ESTIMATE / QUOTATION' with Quote No. Can be converted to Tax Invoice anytime.",
+                                fontSize = 11.sp,
+                                color = Color(0xFFB45309),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             // 1. Customer Selection Card
             item {
                 ElevatedCard(
@@ -482,7 +570,7 @@ fun NewEntryScreen(
                             OutlinedTextField(
                                 value = invoiceNo,
                                 onValueChange = { viewModel.invoiceNoDraft.value = it },
-                                label = { Text("Invoice No") },
+                                label = { Text(if (isQuotation) "Quote No" else "Invoice No") },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f)
                             )
@@ -551,6 +639,73 @@ fun NewEntryScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                         )
+
+                        // Quick Door Presets Master Row
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "⚡ Quick Door Presets",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                TextButton(
+                                    onClick = { showPresetManagerDialog = true },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(13.dp))
+                                    Spacer(Modifier.width(3.dp))
+                                    Text("Manage Presets", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            if (allDoorPresets.isNotEmpty()) {
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(allDoorPresets) { preset ->
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (particular == preset.name) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (particular == preset.name) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                                            ),
+                                            modifier = Modifier.clickable {
+                                                viewModel.applyDoorPreset(preset)
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = preset.name,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (particular == preset.name) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                )
+                                                if (preset.defaultRate > 0) {
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "₹${preset.defaultRate.toInt()}",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF16A34A)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         // Particular & HSN/SAC
                         Row(
@@ -1317,11 +1472,14 @@ fun NewEntryScreen(
         )
     }
 
+    var showChallanFromSave by remember { mutableStateOf<BillWithItems?>(null) }
+
     // Share Options Dialog after saving bill
     billSavedShareTarget?.let { b ->
+        val isQuote = b.bill.isQuotation
         ShareOptionsDialog(
-            title = "Share Tax Invoice",
-            subtitle = "Invoice #${b.bill.invoiceNo} • ${b.bill.customerName}",
+            title = if (isQuote) "Share Quotation / Estimate" else "Share Tax Invoice",
+            subtitle = "${if (isQuote) "Quote" else "Invoice"} #${b.bill.invoiceNo} • ${b.bill.customerName}",
             onDismiss = { billSavedShareTarget = null },
             onShareWhatsApp = {
                 ShareHelper.shareInvoicePdfWhatsApp(context, b, company)
@@ -1337,7 +1495,30 @@ fun NewEntryScreen(
             },
             onPrint = {
                 InvoicePrinter.printInvoice(context, b, company)
+            },
+            onDeliveryChallan = {
+                val target = b
+                billSavedShareTarget = null
+                showChallanFromSave = target
             }
+        )
+    }
+
+    // Delivery Challan Dialog from Save
+    showChallanFromSave?.let { b ->
+        DeliveryChallanDialog(
+            billWithItems = b,
+            company = company,
+            onDismiss = { showChallanFromSave = null }
+        )
+    }
+
+    // Door Preset Master Dialog
+    if (showPresetManagerDialog) {
+        DoorPresetManagementDialog(
+            viewModel = viewModel,
+            presets = allDoorPresets,
+            onDismiss = { showPresetManagerDialog = false }
         )
     }
 

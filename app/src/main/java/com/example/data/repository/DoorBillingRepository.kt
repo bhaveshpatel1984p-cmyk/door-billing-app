@@ -22,6 +22,8 @@ import com.example.data.db.SupplierBalanceSummary
 import com.example.data.db.SupplierDao
 import com.example.data.db.SupplierEntity
 import com.example.data.db.SupplierLedgerEntry
+import com.example.data.db.DoorPresetDao
+import com.example.data.db.DoorPresetEntity
 import com.example.data.backup.AppBackupData
 import com.example.data.db.DoorDatabase
 import androidx.room.withTransaction
@@ -36,7 +38,8 @@ class DoorBillingRepository(
     private val companyProfileDao: CompanyProfileDao,
     private val supplierDao: SupplierDao,
     private val purchaseDao: PurchaseDao,
-    private val purchasePaymentDao: PurchasePaymentDao
+    private val purchasePaymentDao: PurchasePaymentDao,
+    private val doorPresetDao: DoorPresetDao
 ) {
     // Customers
     val allCustomers: Flow<List<CustomerEntity>> = customerDao.getAllCustomers()
@@ -79,6 +82,41 @@ class DoorBillingRepository(
         val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
         val seq = (count + 1).toString().padStart(4, '0')
         return "INV/$year/$seq"
+    }
+
+    suspend fun generateNextQuotationNumber(): String {
+        val count = billDao.getTotalBillsCount()
+        val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val seq = (count + 1).toString().padStart(4, '0')
+        return "EST/$year/$seq"
+    }
+
+    suspend fun convertQuotationToInvoice(billId: Long): String {
+        val newInvoiceNo = generateNextInvoiceNumber()
+        billDao.convertQuotationToInvoice(billId, newInvoiceNo)
+        return newInvoiceNo
+    }
+
+    // Door Presets
+    val allDoorPresets: Flow<List<DoorPresetEntity>> = doorPresetDao.getAllPresets()
+
+    suspend fun getPresetsCount(): Int = doorPresetDao.getPresetsCount()
+
+    suspend fun saveDoorPreset(preset: DoorPresetEntity): Long {
+        return if (preset.id == 0L) {
+            doorPresetDao.insertPreset(preset)
+        } else {
+            doorPresetDao.updatePreset(preset)
+            preset.id
+        }
+    }
+
+    suspend fun insertDefaultPresets(presets: List<DoorPresetEntity>) {
+        doorPresetDao.insertPresets(presets)
+    }
+
+    suspend fun deleteDoorPreset(preset: DoorPresetEntity) {
+        doorPresetDao.deletePreset(preset)
     }
 
     // Payments

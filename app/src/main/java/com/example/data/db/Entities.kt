@@ -61,6 +61,7 @@ data class BillEntity(
     val previousBalance: Double = 0.0,
     val netPayable: Double = 0.0,
     val paidAmount: Double = 0.0,
+    val isQuotation: Boolean = false,
     val notes: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
@@ -116,8 +117,10 @@ data class CompanyProfileEntity(
     val id: Int = 1,
     val businessName: String = "NIRMAL DOOR",
     val address: String = "Plot No. 12, Industrial Area, Timber Market",
+    val addressLine2: String = "", // Optional second line of address (e.g. Area, Landmark, Road)
     val gstNo: String = "24AAAAA0000A1Z5",
     val mobile: String = "9876543210",
+    val alternateMobile: String = "", // Optional additional/alternate mobile numbers
     val email: String = "doorbusiness@example.com",
     val pan: String = "AAAAA0000A",
     val state: String = "Gujarat",
@@ -130,7 +133,27 @@ data class CompanyProfileEntity(
     val logoUri: String? = null, // Stored local Uri or null to use default vector logo
     val qrCodeUri: String? = null, // Stored local Uri for uploaded payment QR code image (PhonePe/GPay/Paytm)
     val upiId: String = "" // Optional UPI ID (e.g. nirmaldoor@upi) to auto-generate UPI QR code
-)
+) {
+    val fullAddress: String
+        get() = if (addressLine2.isNotBlank()) "$address, $addressLine2" else address
+
+    val addressMultiLine: String
+        get() = if (addressLine2.isNotBlank()) "$address\n$addressLine2" else address
+
+    val displayMobile: String
+        get() = if (alternateMobile.isNotBlank()) "$mobile, $alternateMobile" else mobile
+
+    val allMobiles: List<String>
+        get() = buildList {
+            if (mobile.isNotBlank()) add(mobile.trim())
+            if (alternateMobile.isNotBlank()) {
+                alternateMobile.split(",", "/", ";", "\n")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .forEach { add(it) }
+            }
+        }.distinct()
+}
 
 // Data class with bill + items relation
 data class BillWithItems(
@@ -322,4 +345,16 @@ sealed class SupplierLedgerEntry {
         override val creditAmount: Double = 0.0
     }
 }
+
+@Entity(tableName = "door_presets")
+data class DoorPresetEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val name: String,
+    val defaultRate: Double,
+    val defaultHsn: String = "4418",
+    val defaultHeight: Double = 78.0,
+    val defaultWidth: Double = 30.0,
+    val createdAt: Long = System.currentTimeMillis()
+)
 

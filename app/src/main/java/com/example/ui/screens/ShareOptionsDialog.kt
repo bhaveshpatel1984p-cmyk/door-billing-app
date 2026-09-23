@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.Card
@@ -48,7 +49,8 @@ fun ShareOptionsDialog(
     onShareWhatsAppBusiness: () -> Unit = onShareWhatsApp,
     onSharePdf: () -> Unit,
     onShareText: (() -> Unit)? = null,
-    onPrint: (() -> Unit)? = null
+    onPrint: (() -> Unit)? = null,
+    onDeliveryChallan: (() -> Unit)? = null
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -156,7 +158,23 @@ fun ShareOptionsDialog(
                     )
                 }
 
-                // Option 5: Text Summary (if available)
+                // Option 5: Delivery Challan / Dispatch Slip (if available)
+                if (onDeliveryChallan != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ShareOptionRow(
+                        icon = Icons.Default.LocalShipping,
+                        iconBgColor = Color(0xFF0369A1),
+                        title = "Delivery Challan / Gate Pass",
+                        subtitle = "Vehicle dispatch slip with door sizes & count",
+                        testTag = "share_option_challan",
+                        onClick = {
+                            onDismiss()
+                            onDeliveryChallan()
+                        }
+                    )
+                }
+
+                // Option 6: Text Summary (if available)
                 if (onShareText != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     ShareOptionRow(

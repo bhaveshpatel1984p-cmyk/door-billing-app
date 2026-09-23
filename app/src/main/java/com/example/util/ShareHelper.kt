@@ -9,6 +9,7 @@ import com.example.data.db.BillWithItems
 import com.example.data.db.CompanyProfileEntity
 import com.example.data.db.CustomerEntity
 import com.example.data.db.LedgerEntry
+import com.example.data.db.PaymentEntity
 import java.util.Locale
 
 object ShareHelper {
@@ -350,7 +351,7 @@ object ShareHelper {
         val sb = StringBuilder()
         sb.appendLine("📊 *CUSTOMER ACCOUNT STATEMENT*")
         sb.appendLine("*${company.businessName}*")
-        sb.appendLine("📞 Phone: ${company.mobile}")
+        sb.appendLine("📞 Phone: ${company.displayMobile}")
         sb.appendLine("━━━━━━━━━━━━━━━━━━━")
         sb.appendLine("👤 *Customer:* ${customer.name}")
         if (customer.mobile.isNotBlank()) sb.appendLine("📱 Mobile: ${customer.mobile}")
@@ -409,4 +410,117 @@ object ShareHelper {
             Toast.makeText(context, "Could not open WhatsApp: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
+
+    /**
+     * Share Delivery Challan via System Chooser
+     */
+    fun shareDeliveryChallanGeneral(
+        context: Context,
+        billWithItems: BillWithItems,
+        company: CompanyProfileEntity,
+        vehicleNo: String = "",
+        transportName: String = ""
+    ) {
+        try {
+            val pdfFile = PdfInvoiceGenerator.generateDeliveryChallanPdf(context, billWithItems, company, vehicleNo, transportName)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", pdfFile)
+            val challanNo = "DC/" + billWithItems.bill.invoiceNo.removePrefix("INV/").removePrefix("EST/")
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "Delivery Challan #$challanNo - ${billWithItems.bill.customerName}")
+                putExtra(Intent.EXTRA_TEXT, "Dear ${billWithItems.bill.customerName},\nPlease find attached Delivery Challan #$challanNo for your door order dispatch.\nFrom: ${company.businessName}")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Share Delivery Challan via"))
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not share Challan: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Share Delivery Challan via WhatsApp
+     */
+    fun shareDeliveryChallanWhatsApp(
+        context: Context,
+        billWithItems: BillWithItems,
+        company: CompanyProfileEntity,
+        vehicleNo: String = "",
+        transportName: String = ""
+    ) {
+        try {
+            val pdfFile = PdfInvoiceGenerator.generateDeliveryChallanPdf(context, billWithItems, company, vehicleNo, transportName)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", pdfFile)
+            val challanNo = "DC/" + billWithItems.bill.invoiceNo.removePrefix("INV/").removePrefix("EST/")
+            val caption = "📦 *DELIVERY CHALLAN / DISPATCH SLIP*\n" +
+                    "Challan No: *$challanNo*\n" +
+                    "Order Ref: ${billWithItems.bill.invoiceNo}\n" +
+                    "Customer: ${billWithItems.bill.customerName}\n" +
+                    "Doors: ${billWithItems.items.sumOf { it.qty }} Pcs\n" +
+                    "Vehicle: ${vehicleNo.ifBlank { "Local" }}\n" +
+                    "From: *${company.businessName}*"
+            sharePdfDirect(context, uri, caption, "com.whatsapp", "WhatsApp", "Share Delivery Challan")
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not share Challan: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Share Payment Receipt via System Chooser
+     */
+    fun sharePaymentReceiptGeneral(
+        context: Context,
+        payment: PaymentEntity,
+        customerName: String,
+        customerMobile: String,
+        company: CompanyProfileEntity,
+        previousBalance: Double,
+        remainingBalance: Double
+    ) {
+        try {
+            val pdfFile = PdfInvoiceGenerator.generatePaymentReceiptPdf(context, payment, customerName, customerMobile, company, previousBalance, remainingBalance)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", pdfFile)
+            val rcptNo = "REC-${payment.id.toString().padStart(4, '0')}"
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "Payment Receipt #$rcptNo - $customerName")
+                putExtra(Intent.EXTRA_TEXT, "Dear $customerName,\nThank you for your payment of ₹${String.format(Locale.US, "%.2f", payment.amount)}.\nPlease find attached official payment voucher #$rcptNo.\nFrom: ${company.businessName}")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, "Share Payment Receipt via"))
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not share Receipt: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Share Payment Receipt via WhatsApp
+     */
+    fun sharePaymentReceiptWhatsApp(
+        context: Context,
+        payment: PaymentEntity,
+        customerName: String,
+        customerMobile: String,
+        company: CompanyProfileEntity,
+        previousBalance: Double,
+        remainingBalance: Double
+    ) {
+        try {
+            val pdfFile = PdfInvoiceGenerator.generatePaymentReceiptPdf(context, payment, customerName, customerMobile, company, previousBalance, remainingBalance)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", pdfFile)
+            val rcptNo = "REC-${payment.id.toString().padStart(4, '0')}"
+            val caption = "🧾 *PAYMENT RECEIPT ACKNOWLEDGEMENT*\n" +
+                    "Receipt No: *$rcptNo*\n" +
+                    "Customer: *$customerName*\n" +
+                    "Amount Received: *₹ ${String.format(Locale.US, "%,.2f", payment.amount)}*\n" +
+                    "Mode: ${payment.paymentMode}\n" +
+                    "Remaining Balance: *₹ ${String.format(Locale.US, "%,.2f", remainingBalance)}*\n" +
+                    "Thank you!\n*${company.businessName}*"
+            sharePdfDirect(context, uri, caption, "com.whatsapp", "WhatsApp", "Share Payment Receipt")
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not share Receipt: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
 }
+

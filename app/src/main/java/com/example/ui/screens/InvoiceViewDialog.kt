@@ -21,11 +21,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DoorBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -38,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -70,7 +74,8 @@ fun InvoiceViewDialog(
     billWithItems: BillWithItems,
     company: CompanyProfileEntity,
     onDismiss: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onConvertToInvoice: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val bill = billWithItems.bill
@@ -78,6 +83,8 @@ fun InvoiceViewDialog(
     val totalSqFt = items.sumOf { it.sqFt }
     val totalQty = items.sumOf { it.qty }
     var showShareOptions by remember { mutableStateOf(false) }
+    var showDeliveryChallanDialog by remember { mutableStateOf(false) }
+    var showConvertConfirmDialog by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -103,11 +110,27 @@ fun InvoiceViewDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(
-                            text = "Invoice Preview",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = if (bill.isQuotation) "Quotation / Estimate Preview" else "Invoice Preview",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (bill.isQuotation) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Color(0xFFFEF3C7)
+                                ) {
+                                    Text(
+                                        "ESTIMATE",
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFB45309)
+                                    )
+                                }
+                            }
+                        }
                         Text(
                             text = bill.invoiceNo,
                             style = MaterialTheme.typography.bodySmall,
@@ -156,7 +179,7 @@ fun InvoiceViewDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "TAX INVOICE / BILL OF SUPPLY",
+                                        text = if (bill.isQuotation) "ESTIMATE / QUOTATION" else "TAX INVOICE / BILL OF SUPPLY",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
                                         color = Color(0xFF0369A1),
@@ -202,7 +225,7 @@ fun InvoiceViewDialog(
                                                     color = Color(0xFF0369A1)
                                                 )
                                                 Text(
-                                                    text = company.address,
+                                                    text = company.fullAddress,
                                                     fontSize = 9.5.sp,
                                                     color = Color(0xFF334155),
                                                     lineHeight = 12.sp
@@ -216,7 +239,7 @@ fun InvoiceViewDialog(
                                             color = Color(0xFF1E293B)
                                         )
                                         Text(
-                                            text = "Mobile: ${company.mobile}${if (company.email.isNotBlank()) " | Email: ${company.email}" else ""}",
+                                            text = "Mobile: ${company.displayMobile}${if (company.email.isNotBlank()) " | Email: ${company.email}" else ""}",
                                             fontSize = 9.5.sp,
                                             color = Color(0xFF334155)
                                         )
@@ -243,7 +266,7 @@ fun InvoiceViewDialog(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Text("Invoice No:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                                            Text(if (bill.isQuotation) "Quote No:" else "Invoice No:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
                                             Text(bill.invoiceNo, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
                                         }
                                         Row(
@@ -625,10 +648,26 @@ fun InvoiceViewDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Bottom Action buttons: Print | WhatsApp | Edit
+                // Convert to Invoice Banner Button (if bill is quotation)
+                if (bill.isQuotation && onConvertToInvoice != null) {
+                    Button(
+                        onClick = { showConvertConfirmDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Convert Quotation to Tax Invoice", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Bottom Action buttons: Print | Share | Challan | Edit
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Button(
                         onClick = {
@@ -636,24 +675,39 @@ fun InvoiceViewDialog(
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Print / PDF", fontSize = 12.sp)
+                        Text("Print", fontSize = 11.5.sp)
                     }
 
                     Button(
                         onClick = {
                             showShareOptions = true
                         },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Share", fontSize = 11.5.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            showDeliveryChallanDialog = true
+                        },
                         modifier = Modifier.weight(1.1f),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.LocalShipping, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF0284C7))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Share", fontSize = 12.sp)
+                        Text("Challan", fontSize = 11.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
                     }
 
                     OutlinedButton(
@@ -661,21 +715,24 @@ fun InvoiceViewDialog(
                             onDismiss()
                             onEdit()
                         },
-                        modifier = Modifier.weight(0.8f),
-                        shape = RoundedCornerShape(10.dp)
+                        modifier = Modifier.weight(0.9f),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Edit", fontSize = 12.sp)
+                        Text("Edit", fontSize = 11.5.sp)
                     }
                 }
             }
         }
 
         if (showShareOptions) {
+            val docTitle = if (bill.isQuotation) "Share Quotation / Estimate" else "Share Tax Invoice"
+            val docSubtitle = "${if (bill.isQuotation) "Quote" else "Invoice"} #${bill.invoiceNo} • ${bill.customerName}"
             ShareOptionsDialog(
-                title = "Share Tax Invoice",
-                subtitle = "Invoice #${bill.invoiceNo} • ${bill.customerName}",
+                title = docTitle,
+                subtitle = docSubtitle,
                 onDismiss = { showShareOptions = false },
                 onShareWhatsApp = {
                     ShareHelper.shareInvoicePdfWhatsApp(context, billWithItems, company)
@@ -691,8 +748,47 @@ fun InvoiceViewDialog(
                 },
                 onPrint = {
                     InvoicePrinter.printInvoice(context, billWithItems, company)
+                },
+                onDeliveryChallan = {
+                    showDeliveryChallanDialog = true
+                }
+            )
+        }
+
+        if (showDeliveryChallanDialog) {
+            DeliveryChallanDialog(
+                billWithItems = billWithItems,
+                company = company,
+                onDismiss = { showDeliveryChallanDialog = false }
+            )
+        }
+
+        if (showConvertConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showConvertConfirmDialog = false },
+                title = { Text("Convert to Tax Invoice?", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text("This will convert Quotation #${bill.invoiceNo} into an official Tax Invoice, assign a new sequential Invoice Number, and register it in Sales & Customer Ledgers.")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showConvertConfirmDialog = false
+                            onDismiss()
+                            onConvertToInvoice?.invoke()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+                    ) {
+                        Text("Convert Now")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showConvertConfirmDialog = false }) {
+                        Text("Cancel")
+                    }
                 }
             )
         }
     }
 }
+

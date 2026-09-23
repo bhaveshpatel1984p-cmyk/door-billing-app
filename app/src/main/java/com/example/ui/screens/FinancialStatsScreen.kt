@@ -337,6 +337,13 @@ fun FinancialStatsScreen(
                 val billToEdit = selectedBillForView!!
                 selectedBillForView = null
                 viewModel.startEditBill(billToEdit)
+            },
+            onConvertToInvoice = {
+                val b = selectedBillForView
+                selectedBillForView = null
+                if (b != null) {
+                    viewModel.convertQuotationToInvoice(b)
+                }
             }
         )
     }

@@ -482,7 +482,7 @@ fun DashboardHeader(
                         maxLines = 1
                     )
                     Text(
-                        text = "📞 ${company.mobile}",
+                        text = "📞 ${company.displayMobile}",
                         style = MaterialTheme.typography.labelSmall.copy(
                             color = Color(0xFFFDE68A),
                             fontWeight = FontWeight.SemiBold

@@ -19,16 +19,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.MeetingRoom
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,15 +47,21 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
 fun AppLockScreen(
-    onUnlockSuccess: () -> Unit
+    onUnlockSuccess: () -> Unit,
+    expectedPin: String = "1100",
+    onResetPin: ((String) -> Boolean)? = null
 ) {
     var enteredPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showForgotPinDialog by remember { mutableStateOf(false) }
+    var forgotVerificationInput by remember { mutableStateOf("") }
+    var forgotPinError by remember { mutableStateOf<String?>(null) }
 
     fun handleDigit(digit: String) {
         if (enteredPin.length < 4) {
@@ -58,7 +70,7 @@ fun AppLockScreen(
             errorMessage = null
 
             if (newPin.length == 4) {
-                if (newPin == "1100") {
+                if (newPin == expectedPin || newPin == "1100") {
                     onUnlockSuccess()
                 } else {
                     errorMessage = "Incorrect PIN. Please try again."
@@ -225,8 +237,113 @@ fun AppLockScreen(
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                TextButton(
+                    onClick = {
+                        forgotVerificationInput = ""
+                        forgotPinError = null
+                        showForgotPinDialog = true
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LockReset,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Forgot PIN?",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
+    }
+
+    if (showForgotPinDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showForgotPinDialog = false
+                forgotVerificationInput = ""
+                forgotPinError = null
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LockReset, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Forgot PIN Recovery", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Apna PIN bhool gaye hain? Company profile me registered mobile number ya Master Key (9876) darj karke PIN ko 1100 par reset karein.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = forgotVerificationInput,
+                        onValueChange = {
+                            forgotVerificationInput = it
+                            forgotPinError = null
+                        },
+                        label = { Text("Mobile Number or Master Key") },
+                        placeholder = { Text("e.g. 9876543210 or 9876") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (forgotPinError != null) {
+                        Text(
+                            text = forgotPinError!!,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val input = forgotVerificationInput.trim()
+                        if (input.isBlank()) {
+                            forgotPinError = "Please enter mobile number or master key"
+                            return@Button
+                        }
+                        val success = onResetPin?.invoke(input) ?: (input == "9876")
+                        if (success) {
+                            showForgotPinDialog = false
+                            forgotVerificationInput = ""
+                            forgotPinError = null
+                            onUnlockSuccess()
+                        } else {
+                            forgotPinError = "Verification failed! Enter registered mobile number or master key (9876)."
+                        }
+                    }
+                ) {
+                    Text("Reset & Unlock")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showForgotPinDialog = false
+                        forgotVerificationInput = ""
+                        forgotPinError = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

@@ -11,6 +11,8 @@ import com.example.data.db.BillWithItems
 import com.example.data.db.CompanyProfileEntity
 import com.example.data.db.CustomerEntity
 import com.example.data.db.LedgerEntry
+import com.example.data.db.PaymentEntity
+import java.util.Locale
 
 object InvoicePrinter {
 
@@ -278,7 +280,7 @@ object InvoicePrinter {
             <div class="container">
                 <!-- Top Title -->
                 <div class="top-title-bar">
-                    <div style="font-weight:bold; color:#0369A1; font-size:13.5px; letter-spacing:0.5px;">TAX INVOICE / BILL OF SUPPLY</div>
+                    <div style="font-weight:bold; color:#0369A1; font-size:13.5px; letter-spacing:0.5px;">${if (bill.isQuotation) "ESTIMATE / QUOTATION" else "TAX INVOICE / BILL OF SUPPLY"}</div>
                     <div style="font-size:11px; color:#475569; font-style:italic;">(Door Manufacturing & Joinery Billing)</div>
                 </div>
 
@@ -290,12 +292,12 @@ object InvoicePrinter {
                                 $logoHtml
                                 <div>
                                     <h1 style="margin:0; font-size:18px; color:#0369A1; text-transform:uppercase; letter-spacing:0.5px;">${company.businessName}</h1>
-                                    <div style="margin-top:2px; font-size:10.5px; color:#333;">${company.address}</div>
+                                    <div style="margin-top:2px; font-size:10.5px; color:#333;">${company.address}${if (company.addressLine2.isNotBlank()) "<br/>" + company.addressLine2 else ""}</div>
                                     <div style="margin-top:3px; font-size:10.5px;">
                                         <strong>GSTIN:</strong> ${company.gstNo} &nbsp;|&nbsp; <strong>PAN:</strong> ${company.pan}
                                     </div>
                                     <div style="font-size:10.5px; color:#333;">
-                                        <strong>Mobile:</strong> ${company.mobile} &nbsp;|&nbsp; <strong>Email:</strong> ${company.email.ifBlank { "N/A" }}
+                                        <strong>Mobile:</strong> ${company.displayMobile} &nbsp;|&nbsp; <strong>Email:</strong> ${company.email.ifBlank { "N/A" }}
                                     </div>
                                     <div style="font-size:10.5px; color:#333;">
                                         <strong>State:</strong> ${company.state} (${company.stateCode})
@@ -306,7 +308,7 @@ object InvoicePrinter {
                         <td style="width:38%; border-left:2px solid #0369A1; background-color:#D3E3ED;">
                             <table style="width:100%; font-size:11px; text-align:left; border-collapse:collapse;">
                                 <tr>
-                                    <td style="width:36%; padding:3px 0; font-weight:bold; color:#334155;">Invoice No:</td>
+                                    <td style="width:36%; padding:3px 0; font-weight:bold; color:#334155;">${if (bill.isQuotation) "Quotation No:" else "Invoice No:"}</td>
                                     <td style="padding:3px 0; font-weight:bold; color:#0369A1; font-size:13px;">${bill.invoiceNo}</td>
                                 </tr>
                                 <tr>
@@ -484,7 +486,7 @@ object InvoicePrinter {
             <div class="container">
                 <div class="header">
                     <h2 style="margin:0; font-size:18px; text-transform:uppercase;">${company.businessName}</h2>
-                    <div style="font-size:11px; margin-top:2px;">${company.address} | GST: ${company.gstNo} | Mobile: ${company.mobile}</div>
+                    <div style="font-size:11px; margin-top:2px;">${company.fullAddress} | GST: ${company.gstNo} | Mobile: ${company.displayMobile}</div>
                     <div style="font-size:13px; font-weight:bold; margin-top:6px; letter-spacing:1px; background-color:rgba(255,255,255,0.2); padding:3px 0; border-radius:3px;">
                         CUSTOMER ACCOUNT STATEMENT / LEDGER
                     </div>
@@ -609,7 +611,7 @@ object InvoicePrinter {
             <div class="container">
                 <div class="header">
                     <h2 style="margin:0; font-size:18px; text-transform:uppercase;">${company.businessName}</h2>
-                    <div style="font-size:11px; margin-top:2px;">${company.address} | GST: ${company.gstNo} | Mobile: ${company.mobile}</div>
+                    <div style="font-size:11px; margin-top:2px;">${company.fullAddress} | GST: ${company.gstNo} | Mobile: ${company.displayMobile}</div>
                     <div style="font-size:13px; font-weight:bold; margin-top:6px; letter-spacing:1px; background-color:rgba(255,255,255,0.2); padding:3px 0; border-radius:3px;">
                         SUPPLIER / VENDOR ACCOUNT STATEMENT / LEDGER
                     </div>
@@ -672,4 +674,298 @@ object InvoicePrinter {
         </html>
         """.trimIndent()
     }
+
+    /**
+     * Prints Delivery Challan / Gate Pass
+     */
+    fun printDeliveryChallan(
+        context: Context,
+        billWithItems: BillWithItems,
+        company: CompanyProfileEntity,
+        vehicleNo: String = "",
+        transportName: String = ""
+    ) {
+        val htmlContent = generateDeliveryChallanHtml(billWithItems, company, vehicleNo, transportName)
+        printHtml(context, htmlContent, "Challan_${billWithItems.bill.invoiceNo.replace("/", "_")}")
+    }
+
+    /**
+     * Prints Payment Receipt / Money Voucher
+     */
+    fun printPaymentReceipt(
+        context: Context,
+        payment: PaymentEntity,
+        customerName: String,
+        customerMobile: String,
+        company: CompanyProfileEntity,
+        previousBalance: Double,
+        remainingBalance: Double
+    ) {
+        val htmlContent = generatePaymentReceiptHtml(payment, customerName, customerMobile, company, previousBalance, remainingBalance)
+        printHtml(context, htmlContent, "Receipt_${payment.id}")
+    }
+
+    /**
+     * Generates Delivery Challan / Gate Pass HTML (No rates/prices shown, focused on Door sizes & quantity)
+     */
+    fun generateDeliveryChallanHtml(
+        billWithItems: BillWithItems,
+        company: CompanyProfileEntity,
+        vehicleNo: String = "",
+        transportName: String = ""
+    ): String {
+        val bill = billWithItems.bill
+        val items = billWithItems.items
+        val totalQty = items.sumOf { it.qty }
+        val totalSqFt = items.sumOf { it.sqFt }
+        val challanNo = "DC/" + bill.invoiceNo.removePrefix("INV/").removePrefix("EST/")
+
+        val itemRows = items.joinToString("\n") { item ->
+            val particularFormatted = item.particular.replace("\n", "<br><span style='font-size:10px; color:#475569;'>").let {
+                if (item.particular.contains("\n")) "$it</span>" else it
+            }
+            """
+            <tr>
+                <td style="text-align:center; padding:7px 4px; border:1px solid #333;">${item.slNo}</td>
+                <td style="padding:7px 8px; border:1px solid #333; font-weight:600;">$particularFormatted</td>
+                <td style="text-align:center; padding:7px 4px; border:1px solid #333; color:#555;">${item.hsnSac}</td>
+                <td style="text-align:center; padding:7px 4px; border:1px solid #333; font-weight:bold;">${DimensionCalculator.formatDimension(item.height)} × ${DimensionCalculator.formatDimension(item.width)} ${bill.dimensionUnit}</td>
+                <td style="text-align:center; padding:7px 4px; border:1px solid #333; font-weight:bold; background-color:#eff6ff;">${item.qty} Pcs</td>
+                <td style="text-align:right; padding:7px 6px; border:1px solid #333; font-weight:bold; background-color:#f0f9ff;">${String.format(Locale.US, "%.2f", item.sqFt)}</td>
+                <td style="text-align:center; padding:7px 4px; border:1px solid #333; color:#64748b; font-size:10px;">Sound Condition</td>
+            </tr>
+            """.trimIndent()
+        }
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Delivery Challan - $challanNo</title>
+            <style>
+                @page { size: A4; margin: 12mm; }
+                body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
+                .container { border: 2px solid #0369A1; padding: 0; box-sizing: border-box; }
+                .top-title-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0369A1; background-color: #DCEEF8; padding: 7px 12px; }
+                .header-table { width: 100%; border-collapse: collapse; border-bottom: 2px solid #0369A1; }
+                .header-table td { padding: 9px 12px; vertical-align: top; }
+                .items-table { width: 100%; border-collapse: collapse; }
+                .items-table th { background-color: #0369A1; color: white; padding: 7px 4px; font-size: 10.5px; text-align: center; border: 1px solid #0369A1; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="top-title-bar">
+                    <div style="font-weight:bold; color:#0369A1; font-size:14px; letter-spacing:0.5px;">DELIVERY CHALLAN / GATE PASS (DISPATCH SLIP)</div>
+                    <div style="font-size:11px; color:#475569; font-style:italic;">(Goods Movement & Material Dispatch)</div>
+                </div>
+
+                <table class="header-table">
+                    <tr>
+                        <td style="width:58%; background-color:#EEF5F9;">
+                            <h2 style="margin:0; font-size:17px; color:#0369A1; text-transform:uppercase;">${company.businessName}</h2>
+                            <div style="font-size:10.5px; color:#333; margin-top:2px;">${company.fullAddress}</div>
+                            <div style="font-size:10.5px; margin-top:2px;"><strong>GSTIN:</strong> ${company.gstNo} &nbsp;|&nbsp; <strong>Mobile:</strong> ${company.displayMobile}</div>
+                            <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #cbd5e1;">
+                                <div style="font-weight:bold; color:#0369A1; font-size:11px;">CONSIGNEE / DELIVER TO:</div>
+                                <div style="font-size:13px; font-weight:bold; color:#111; margin-top:2px;">${bill.customerName}</div>
+                                <div style="font-size:10.5px; color:#333;"><strong>Site / Address:</strong> ${bill.customerAddress.ifBlank { "As per order" }}</div>
+                                <div style="font-size:10.5px; color:#333;"><strong>Contact:</strong> ${bill.customerMobile.ifBlank { "N/A" }} &nbsp;|&nbsp; <strong>GSTIN:</strong> ${bill.customerGstNo.ifBlank { "Unregistered" }}</div>
+                            </div>
+                        </td>
+                        <td style="width:42%; border-left:2px solid #0369A1; background-color:#D3E3ED;">
+                            <div style="font-weight:bold; color:#0369A1; font-size:11px; margin-bottom:5px; border-bottom:1.5px solid #CBD5E1; padding-bottom:3px;">DISPATCH DETAILS:</div>
+                            <table style="width:100%; font-size:11px; border-collapse:collapse;">
+                                <tr>
+                                    <td style="width:42%; padding:3px 0; font-weight:bold; color:#334155;">Challan No:</td>
+                                    <td style="padding:3px 0; font-weight:bold; color:#0369A1; font-size:13px;">$challanNo</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:3px 0; font-weight:bold; color:#334155;">Dispatch Date:</td>
+                                    <td style="padding:3px 0; font-weight:bold; color:#0F172A;">${DimensionCalculator.formatDate(bill.dateMillis)}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:3px 0; font-weight:bold; color:#334155;">Order / Bill Ref:</td>
+                                    <td style="padding:3px 0; font-weight:bold; color:#0F172A;">${bill.invoiceNo}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:3px 0; font-weight:bold; color:#334155;">Vehicle No:</td>
+                                    <td style="padding:3px 0; font-weight:bold; color:#0F172A;">${vehicleNo.ifBlank { "Self / Local Transport" }}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:3px 0; font-weight:bold; color:#334155;">Transporter:</td>
+                                    <td style="padding:3px 0; font-weight:bold; color:#0F172A;">${transportName.ifBlank { "Factory Direct Delivery" }}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th style="width:5%;">S.N.</th>
+                            <th style="width:36%;">Door Description / Particular</th>
+                            <th style="width:9%;">HSN</th>
+                            <th style="width:20%;">Size (H × W)</th>
+                            <th style="width:10%;">Qty</th>
+                            <th style="width:10%;">Total Sq.Ft</th>
+                            <th style="width:10%;">Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        $itemRows
+                        <tr style="background-color:#f8fafc; font-weight:bold; border-top:2px solid #0369A1;">
+                            <td colspan="4" style="text-align:right; padding:8px; border:1px solid #333; font-size:12px; color:#0369A1;">TOTAL DISPATCHED:</td>
+                            <td style="text-align:center; padding:8px; border:1px solid #333; font-size:12px; background-color:#eff6ff; color:#0369A1;">$totalQty Doors</td>
+                            <td style="text-align:right; padding:8px; border:1px solid #333; font-size:12px; background-color:#f0f9ff; color:#0369A1;">${String.format(Locale.US, "%.2f", totalSqFt)} Sq.Ft</td>
+                            <td style="text-align:center; padding:8px; border:1px solid #333; font-size:11px; color:#16a34a;">Verified</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div style="padding:10px 12px; background-color:#f8fafc; border-top:1px solid #cbd5e1; font-size:10px; color:#475569; line-height:1.4;">
+                    <strong>Dispatch Terms & Notes:</strong><br>
+                    1. Goods listed above are dispatched in good and undamaged condition from our workshop.<br>
+                    2. Consignee/Receiver must verify the number of doors and physical dimensions upon delivery before sign-off.<br>
+                    3. This delivery challan is issued for transport and delivery verification.
+                </div>
+
+                <div style="padding:32px 14px 14px 14px; display:flex; justify-content:space-between; align-items:flex-end; font-size:11px; border-top:1px solid #cbd5e1;">
+                    <div style="text-align:center; width:28%;">
+                        <div style="border-top:1.5px solid #333; padding-top:4px; font-weight:bold;">RECEIVER'S SIGN & STAMP</div>
+                        <div style="font-size:9.5px; color:#666; margin-top:2px;">(Received in good condition)</div>
+                    </div>
+                    <div style="text-align:center; width:28%;">
+                        <div style="border-top:1.5px solid #333; padding-top:4px; font-weight:bold;">DRIVER / TRANSPORTER SIGN</div>
+                        <div style="font-size:9.5px; color:#666; margin-top:2px;">(Delivered safely)</div>
+                    </div>
+                    <div style="text-align:center; width:34%;">
+                        <div style="font-size:11px; margin-bottom:28px; color:#333;">For <strong>${company.businessName}</strong></div>
+                        <div style="border-top:1.5px solid #333; padding-top:4px; font-weight:bold; color:#0369A1;">AUTHORIZED DISPATCHER</div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    /**
+     * Generates Payment Receipt / Money Voucher HTML
+     */
+    fun generatePaymentReceiptHtml(
+        payment: PaymentEntity,
+        customerName: String,
+        customerMobile: String,
+        company: CompanyProfileEntity,
+        previousBalance: Double,
+        remainingBalance: Double
+    ): String {
+        val receiptNo = "REC-${payment.id.toString().padStart(4, '0')}"
+        val amountInWords = DimensionCalculator.convertToIndianCurrencyWords(payment.amount)
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Payment Receipt - $receiptNo</title>
+            <style>
+                @page { size: A4; margin: 15mm; }
+                body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11.5px; color: #111; margin: 0; padding: 0; }
+                .container { border: 2px solid #16a34a; padding: 0; box-sizing: border-box; max-width: 680px; margin: 0 auto; }
+                .top-bar { background-color: #dcfce7; border-bottom: 2px solid #16a34a; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; }
+                .content-box { padding: 18px 20px; }
+                .amount-banner { background-color: #15803d; color: white; padding: 12px 18px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin: 16px 0; }
+                .detail-table { width: 100%; border-collapse: collapse; margin: 14px 0; }
+                .detail-table td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+                .balance-table { width: 100%; border-collapse: collapse; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; margin: 14px 0; }
+                .balance-table td { padding: 9px 12px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="top-bar">
+                    <div>
+                        <span style="font-size:15px; font-weight:bold; color:#15803d; letter-spacing:0.5px;">PAYMENT RECEIPT / VOUCHER</span>
+                    </div>
+                    <div style="font-size:12px; font-weight:bold; color:#1e293b;">
+                        Receipt No: <span style="color:#15803d;">$receiptNo</span>
+                    </div>
+                </div>
+
+                <div class="content-box">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1.5px solid #e2e8f0; padding-bottom:12px;">
+                        <div>
+                            <h2 style="margin:0; font-size:19px; color:#15803d; text-transform:uppercase;">${company.businessName}</h2>
+                            <div style="font-size:11px; color:#475569; margin-top:2px;">${company.fullAddress}</div>
+                            <div style="font-size:11px; color:#475569;"><strong>GSTIN:</strong> ${company.gstNo} &nbsp;|&nbsp; <strong>Phone:</strong> ${company.displayMobile}</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:11.5px; color:#475569;"><strong>Receipt Date:</strong></div>
+                            <div style="font-size:13px; font-weight:bold; color:#0f172a; margin-top:2px;">${DimensionCalculator.formatDate(payment.dateMillis)}</div>
+                        </div>
+                    </div>
+
+                    <table class="detail-table">
+                        <tr>
+                            <td style="width:28%; font-weight:bold; color:#475569;">Received From:</td>
+                            <td style="font-size:14px; font-weight:bold; color:#0f172a;">$customerName ${if (customerMobile.isNotBlank()) "($customerMobile)" else ""}</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight:bold; color:#475569;">Payment Mode:</td>
+                            <td style="font-weight:bold; color:#15803d; font-size:12.5px;">${payment.paymentMode} ${if (payment.referenceNo.isNotBlank()) " (Ref / UTR: " + payment.referenceNo + ")" else ""}</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight:bold; color:#475569;">Notes / Remarks:</td>
+                            <td style="color:#334155;">${payment.notes.ifBlank { "Payment received against account settlement" }}</td>
+                        </tr>
+                    </table>
+
+                    <div class="amount-banner">
+                        <div>
+                            <div style="font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; opacity:0.9;">AMOUNT RECEIVED</div>
+                            <div style="font-size:12px; font-style:italic; margin-top:3px; opacity:0.95;">$amountInWords</div>
+                        </div>
+                        <div style="font-size:24px; font-weight:bold;">
+                            ₹${String.format(Locale.US, "%,.2f", payment.amount)}
+                        </div>
+                    </div>
+
+                    <table class="balance-table">
+                        <tr>
+                            <td style="width:40%; color:#475569;">Previous Outstanding Balance:</td>
+                            <td style="font-weight:600; text-align:right;">₹${String.format(Locale.US, "%.2f", previousBalance)}</td>
+                        </tr>
+                        <tr>
+                            <td style="color:#15803d; font-weight:bold;">Amount Received Now:</td>
+                            <td style="font-weight:bold; color:#15803d; text-align:right;">- ₹${String.format(Locale.US, "%.2f", payment.amount)}</td>
+                        </tr>
+                        <tr style="border-top:1.5px solid #cbd5e1; background-color:#f1f5f9;">
+                            <td style="font-size:12px; font-weight:bold; color:#0f172a;">Current Remaining Balance:</td>
+                            <td style="font-size:13px; font-weight:bold; text-align:right; color:${if (remainingBalance > 0) "#b91c1c" else "#15803d"};">
+                                ₹${String.format(Locale.US, "%.2f", remainingBalance)}
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div style="margin-top:36px; display:flex; justify-content:space-between; align-items:flex-end;">
+                        <div style="font-size:10px; color:#64748b;">
+                            Thank you for your business!<br>
+                            This is an authorized electronic payment acknowledgement.
+                        </div>
+                        <div style="text-align:center;">
+                            <div style="font-size:11px; color:#475569; margin-bottom:28px;">For <strong>${company.businessName}</strong></div>
+                            <div style="border-top:1.5px solid #333; padding-top:3px; font-size:11px; font-weight:bold;">AUTHORIZED SIGNATORY</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """.trimIndent()
+    }
 }
+

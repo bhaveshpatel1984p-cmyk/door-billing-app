@@ -100,6 +100,7 @@ fun CustomerLedgerScreen(
     var payDateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var editingPayment by remember { mutableStateOf<PaymentEntity?>(null) }
     var deletingPayment by remember { mutableStateOf<PaymentEntity?>(null) }
+    var selectedPaymentForReceipt by remember { mutableStateOf<PaymentEntity?>(null) }
 
     val allBills by viewModel.allBills.collectAsStateWithLifecycle()
     var showLedgerShareOptions by remember { mutableStateOf(false) }
@@ -588,6 +589,28 @@ fun CustomerLedgerScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         TextButton(
+                                            onClick = { selectedPaymentForReceipt = entry.payment },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Receipt,
+                                                contentDescription = "Payment Receipt",
+                                                modifier = Modifier.size(15.dp),
+                                                tint = Color(0xFF16A34A)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                "Receipt",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF16A34A)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(6.dp))
+
+                                        TextButton(
                                             onClick = { editingPayment = entry.payment },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                             modifier = Modifier.height(32.dp)
@@ -1041,10 +1064,32 @@ fun CustomerLedgerScreen(
                 val billToEdit = selectedBillForViewModal!!
                 selectedBillForViewModal = null
                 viewModel.startEditBill(billToEdit)
+            },
+            onConvertToInvoice = {
+                val b = selectedBillForViewModal
+                selectedBillForViewModal = null
+                if (b != null) {
+                    viewModel.convertQuotationToInvoice(b)
+                }
             }
         )
     }
+
+    // Payment Receipt Voucher Dialog
+    if (selectedPaymentForReceipt != null) {
+        val payment = selectedPaymentForReceipt!!
+        val priorBalance = balance + payment.amount
+        PaymentReceiptDialog(
+            payment = payment,
+            customer = cust,
+            company = company,
+            previousBalance = Math.max(0.0, priorBalance),
+            remainingBalance = Math.max(0.0, balance),
+            onDismiss = { selectedPaymentForReceipt = null }
+        )
+    }
 }
+
 
 @Composable
 fun EditCustomerPaymentDialog(

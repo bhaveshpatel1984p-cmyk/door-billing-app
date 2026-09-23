@@ -19,6 +19,7 @@ import com.example.data.db.PurchaseWithItems
 import com.example.data.db.SupplierBalanceSummary
 import com.example.data.db.SupplierEntity
 import com.example.data.db.SupplierLedgerEntry
+import com.example.data.db.DoorPresetEntity
 import com.example.data.repository.DoorBillingRepository
 import com.example.util.DimensionCalculator
 import android.content.Context
@@ -87,11 +88,34 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             companyProfileDao = database.companyProfileDao(),
             supplierDao = database.supplierDao(),
             purchaseDao = database.purchaseDao(),
-            purchasePaymentDao = database.purchasePaymentDao()
+            purchasePaymentDao = database.purchasePaymentDao(),
+            doorPresetDao = database.doorPresetDao()
         )
 
         // Initialize Google Account state
         refreshGoogleAccount()
+
+        // Pre-populate standard door presets if empty
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (repository.getPresetsCount() == 0) {
+                    repository.insertDefaultPresets(
+                        listOf(
+                            DoorPresetEntity(name = "Laminated Flush Door 30mm", defaultRate = 145.0, defaultHsn = "4418", defaultHeight = 78.0, defaultWidth = 30.0),
+                            DoorPresetEntity(name = "Pine Wood Door Frame", defaultRate = 180.0, defaultHsn = "4418", defaultHeight = 84.0, defaultWidth = 36.0),
+                            DoorPresetEntity(name = "Teak Finish Moulded Door", defaultRate = 165.0, defaultHsn = "4418", defaultHeight = 78.0, defaultWidth = 32.0),
+                            DoorPresetEntity(name = "Membrane Designer Door", defaultRate = 195.0, defaultHsn = "4418", defaultHeight = 80.0, defaultWidth = 32.0),
+                            DoorPresetEntity(name = "Waterproof PVC Panel Door", defaultRate = 130.0, defaultHsn = "3925", defaultHeight = 72.0, defaultWidth = 27.0),
+                            DoorPresetEntity(name = "Veneer Polished Door 32mm", defaultRate = 260.0, defaultHsn = "4418", defaultHeight = 81.0, defaultWidth = 36.0),
+                            DoorPresetEntity(name = "Commercial Flush Door 25mm", defaultRate = 110.0, defaultHsn = "4418", defaultHeight = 78.0, defaultWidth = 30.0),
+                            DoorPresetEntity(name = "Glass Cutout Flush Door", defaultRate = 175.0, defaultHsn = "4418", defaultHeight = 78.0, defaultWidth = 32.0)
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                // Ignore seed error
+            }
+        }
 
         // Pre-populate standard supplier vendors if database is empty so dropdown is never blank
         viewModelScope.launch(Dispatchers.IO) {
@@ -236,6 +260,103 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val includePreviousBalanceDraft = MutableStateFlow(true)
     val notesDraft = MutableStateFlow("")
     val billItemsDraft = MutableStateFlow<List<BillItemEntity>>(emptyList())
+    val isQuotationDraft = MutableStateFlow(false)
+
+    // Door Presets
+    val allDoorPresets: StateFlow<List<DoorPresetEntity>> = repository.allDoorPresets
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun saveDoorPreset(preset: DoorPresetEntity) {
+        viewModelScope.launch {
+            repository.saveDoorPreset(preset)
+            showMessage("Preset '${preset.name}' saved!")
+        }
+    }
+
+    fun deleteDoorPreset(preset: DoorPresetEntity) {
+        viewModelScope.launch {
+            repository.deleteDoorPreset(preset)
+            showMessage("Preset removed")
+        }
+    }
+
+    fun applyDoorPreset(preset: DoorPresetEntity) {
+        itemParticularInput.value = preset.name
+        itemHsnInput.value = preset.defaultHsn
+        itemRateInput.value = DimensionCalculator.formatDimension(preset.defaultRate)
+        if (itemHeightInput.value.isBlank() && preset.defaultHeight > 0) {
+            itemHeightInput.value = DimensionCalculator.formatDimension(preset.defaultHeight)
+        }
+        if (itemWidthInput.value.isBlank() && preset.defaultWidth > 0) {
+            itemWidthInput.value = DimensionCalculator.formatDimension(preset.defaultWidth)
+        }
+        showMessage("Applied ${preset.name}")
+    }
+
+    fun toggleBillType(isQuotation: Boolean) {
+        isQuotationDraft.value = isQuotation
+        viewModelScope.launch {
+            if (isQuotation) {
+                if (invoiceNoDraft.value.startsWith("INV/")) {
+                    invoiceNoDraft.value = repository.generateNextQuotationNumber()
+                }
+            } else {
+                if (invoiceNoDraft.value.startsWith("EST/")) {
+                    invoiceNoDraft.value = repository.generateNextInvoiceNumber()
+                }
+            }
+        }
+    }
+
+    fun convertQuotationToInvoice(billWithItems: BillWithItems, onComplete: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            val newInv = repository.convertQuotationToInvoice(billWithItems.bill.id)
+            showMessage("Quotation successfully converted to Tax Invoice $newInv")
+            onComplete(newInv)
+        }
+    }
+
+    // App Security PIN & Lock Settings
+    private val securityPrefs = application.getSharedPreferences("door_billing_security_prefs", Context.MODE_PRIVATE)
+    val isPinLockEnabled = MutableStateFlow(securityPrefs.getBoolean("pin_lock_enabled", true))
+    val appSecurityPin = MutableStateFlow(securityPrefs.getString("app_pin", "1100") ?: "1100")
+
+    fun updateSecurityPin(oldPin: String, newPin: String): Boolean {
+        if (oldPin != appSecurityPin.value) {
+            showMessage("Current PIN is incorrect!")
+            return false
+        }
+        if (newPin.length != 4 || !newPin.all { it.isDigit() }) {
+            showMessage("PIN must be exactly 4 digits!")
+            return false
+        }
+        securityPrefs.edit().putString("app_pin", newPin).apply()
+        appSecurityPin.value = newPin
+        showMessage("Security PIN updated successfully!")
+        return true
+    }
+
+    fun setPinLockEnabled(enabled: Boolean) {
+        securityPrefs.edit().putBoolean("pin_lock_enabled", enabled).apply()
+        isPinLockEnabled.value = enabled
+        showMessage(if (enabled) "Security PIN Lock enabled" else "Security PIN Lock disabled")
+    }
+
+    fun resetPinWithMasterOrMobile(enteredVerification: String): Boolean {
+        val cleanVerification = enteredVerification.trim()
+        val allCompanyMobiles = companyProfile.value?.allMobiles ?: emptyList()
+        val matchesAnyMobile = allCompanyMobiles.any { mob ->
+            cleanVerification == mob.trim() || (mob.length >= 10 && cleanVerification == mob.takeLast(10))
+        }
+        if (cleanVerification == "9876" || matchesAnyMobile) {
+            securityPrefs.edit().putString("app_pin", "1100").apply()
+            appSecurityPin.value = "1100"
+            showMessage("PIN has been reset to default: 1100")
+            return true
+        }
+        showMessage("Verification failed! Enter registered mobile number or master PIN.")
+        return false
+    }
 
     fun selectCustomerForBill(customer: CustomerEntity?) {
         selectedCustomerDraft.value = customer
@@ -297,6 +418,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             isRoundOffAutoDraft.value = true
             roundOffDraft.value = 0.0
             paidAmountDraft.value = 0.0
+            isQuotationDraft.value = false
             notesDraft.value = ""
             billItemsDraft.value = emptyList()
             resetItemInputs()
@@ -342,6 +464,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         roundOffDraft.value = bill.roundOffAmount
         isRoundOffAutoDraft.value = (bill.roundOffAmount != 0.0)
         paidAmountDraft.value = bill.paidAmount
+        isQuotationDraft.value = bill.isQuotation
         notesDraft.value = bill.notes
         billItemsDraft.value = billWithItems.items
         resetItemInputs()
@@ -489,7 +612,10 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             val billEntity = BillEntity(
                 id = billIdDraft.value,
-                invoiceNo = invoiceNoDraft.value.ifBlank { repository.generateNextInvoiceNumber() },
+                invoiceNo = invoiceNoDraft.value.ifBlank {
+                    if (isQuotationDraft.value) repository.generateNextQuotationNumber()
+                    else repository.generateNextInvoiceNumber()
+                },
                 customerId = customer.id,
                 customerName = customer.displayName,
                 customerMobile = customer.mobile,
@@ -511,6 +637,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
                 previousBalance = prevBalance,
                 netPayable = netPayable,
                 paidAmount = paidAmountDraft.value,
+                isQuotation = isQuotationDraft.value,
                 notes = notesDraft.value.trim()
             )
 

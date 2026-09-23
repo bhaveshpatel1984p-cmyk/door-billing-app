@@ -48,8 +48,10 @@ data class AppBackupData(
             cpObj.put("id", cp.id)
             cpObj.put("businessName", cp.businessName)
             cpObj.put("address", cp.address)
+            cpObj.put("addressLine2", cp.addressLine2)
             cpObj.put("gstNo", cp.gstNo)
             cpObj.put("mobile", cp.mobile)
+            cpObj.put("alternateMobile", cp.alternateMobile)
             cpObj.put("email", cp.email)
             cpObj.put("pan", cp.pan)
             cpObj.put("state", cp.state)
@@ -249,8 +251,10 @@ data class AppBackupData(
                     id = cp.optInt("id", 1),
                     businessName = cp.optString("businessName", "NIRMAL DOOR"),
                     address = cp.optString("address", ""),
+                    addressLine2 = cp.optString("addressLine2", ""),
                     gstNo = cp.optString("gstNo", ""),
                     mobile = cp.optString("mobile", ""),
+                    alternateMobile = cp.optString("alternateMobile", ""),
                     email = cp.optString("email", ""),
                     pan = cp.optString("pan", ""),
                     state = cp.optString("state", "Gujarat"),
