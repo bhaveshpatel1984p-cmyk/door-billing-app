@@ -24,6 +24,12 @@ import com.example.data.db.SupplierEntity
 import com.example.data.db.SupplierLedgerEntry
 import com.example.data.db.DoorPresetDao
 import com.example.data.db.DoorPresetEntity
+import com.example.data.db.PurchaseReturnDao
+import com.example.data.db.PurchaseReturnEntity
+import com.example.data.db.PurchaseReturnItemEntity
+import com.example.data.db.PurchaseReturnWithItems
+import com.example.data.db.RawMaterialCatalogDao
+import com.example.data.db.RawMaterialCatalogEntity
 import com.example.data.backup.AppBackupData
 import com.example.data.db.DoorDatabase
 import androidx.room.withTransaction
@@ -39,7 +45,9 @@ class DoorBillingRepository(
     private val supplierDao: SupplierDao,
     private val purchaseDao: PurchaseDao,
     private val purchasePaymentDao: PurchasePaymentDao,
-    private val doorPresetDao: DoorPresetDao
+    private val doorPresetDao: DoorPresetDao,
+    private val purchaseReturnDao: PurchaseReturnDao,
+    private val rawMaterialCatalogDao: RawMaterialCatalogDao
 ) {
     // Customers
     val allCustomers: Flow<List<CustomerEntity>> = customerDao.getAllCustomers()
@@ -275,31 +283,83 @@ class DoorBillingRepository(
     suspend fun deletePurchasePayment(paymentId: Long) =
         purchasePaymentDao.deletePaymentById(paymentId)
 
+    // Purchase Returns / Debit Notes
+    val allPurchaseReturns: Flow<List<PurchaseReturnWithItems>> = purchaseReturnDao.getAllReturnsWithItems()
+
+    fun getReturnsForSupplier(supplierId: Long): Flow<List<PurchaseReturnWithItems>> =
+        purchaseReturnDao.getReturnsBySupplier(supplierId)
+
+    suspend fun savePurchaseReturn(returnEntity: PurchaseReturnEntity, items: List<PurchaseReturnItemEntity>): Long =
+        purchaseReturnDao.saveReturnWithItems(returnEntity, items)
+
+    suspend fun deletePurchaseReturn(returnId: Long) =
+        purchaseReturnDao.deleteReturnById(returnId)
+
+    // Raw Material Catalog
+    val allRawMaterials: Flow<List<RawMaterialCatalogEntity>> = rawMaterialCatalogDao.getAllMaterials()
+
+    suspend fun saveRawMaterial(material: RawMaterialCatalogEntity): Long =
+        if (material.id == 0L) rawMaterialCatalogDao.insertMaterial(material) else {
+            rawMaterialCatalogDao.updateMaterial(material)
+            material.id
+        }
+
+    suspend fun deleteRawMaterial(material: RawMaterialCatalogEntity) =
+        rawMaterialCatalogDao.deleteMaterial(material)
+
+    suspend fun initDefaultRawMaterialsIfEmpty() {
+        if (rawMaterialCatalogDao.getMaterialsCount() == 0) {
+            val defaults = listOf(
+                RawMaterialCatalogEntity(name = "Flush Door 30mm", defaultUnit = "Pcs", defaultRate = 1850.0, hsnSac = "4418", category = "Doors"),
+                RawMaterialCatalogEntity(name = "Flush Door 35mm", defaultUnit = "Pcs", defaultRate = 2200.0, hsnSac = "4418", category = "Doors"),
+                RawMaterialCatalogEntity(name = "Lamination Door", defaultUnit = "Pcs", defaultRate = 2800.0, hsnSac = "4418", category = "Doors"),
+                RawMaterialCatalogEntity(name = "Teak Wood Door", defaultUnit = "Pcs", defaultRate = 6500.0, hsnSac = "4418", category = "Doors"),
+                RawMaterialCatalogEntity(name = "Pine Wood Door", defaultUnit = "Pcs", defaultRate = 3400.0, hsnSac = "4418", category = "Doors"),
+                RawMaterialCatalogEntity(name = "Plywood 18mm (8x4)", defaultUnit = "Pcs", defaultRate = 1950.0, hsnSac = "4412", category = "Plywood"),
+                RawMaterialCatalogEntity(name = "Door Skin Sheet", defaultUnit = "Pcs", defaultRate = 450.0, hsnSac = "4418", category = "Sheets"),
+                RawMaterialCatalogEntity(name = "Fevicol Marine Adhesive", defaultUnit = "Kg", defaultRate = 220.0, hsnSac = "3506", category = "Adhesive"),
+                RawMaterialCatalogEntity(name = "Wood Polish / Varnish", defaultUnit = "Ltr", defaultRate = 380.0, hsnSac = "3208", category = "Finishing"),
+                RawMaterialCatalogEntity(name = "SS Hinges 4x12", defaultUnit = "Pair", defaultRate = 85.0, hsnSac = "8302", category = "Hardware"),
+                RawMaterialCatalogEntity(name = "Tower Bolts 8\"", defaultUnit = "Pcs", defaultRate = 95.0, hsnSac = "8302", category = "Hardware"),
+                RawMaterialCatalogEntity(name = "Mortise Lock & Handle Set", defaultUnit = "Set", defaultRate = 850.0, hsnSac = "8301", category = "Hardware"),
+                RawMaterialCatalogEntity(name = "PVC Edge Banding Roll (50m)", defaultUnit = "Roll", defaultRate = 320.0, hsnSac = "3920", category = "Hardware"),
+                RawMaterialCatalogEntity(name = "Timber Planks", defaultUnit = "Sq.Ft", defaultRate = 110.0, hsnSac = "4407", category = "Timber")
+            )
+            rawMaterialCatalogDao.insertMaterials(defaults)
+        }
+    }
+
     // Supplier Balances & Ledger
     val supplierBalances: Flow<List<SupplierBalanceSummary>> =
         combine(
             supplierDao.getAllSuppliers(),
             purchaseDao.getAllPurchasesWithItems(),
-            purchasePaymentDao.getAllPayments()
-        ) { suppliers, purchases, payments ->
+            purchasePaymentDao.getAllPayments(),
+            purchaseReturnDao.getAllReturnsWithItems()
+        ) { suppliers, purchases, payments, returns ->
             suppliers.map { supplier ->
                 val supplierPurchases = purchases.filter { it.purchase.supplierId == supplier.id }
                 val supplierPayments = payments.filter { it.supplierId == supplier.id }
+                val supplierReturns = returns.filter { it.returnNote.supplierId == supplier.id }
                 val totalPurchased = supplierPurchases.sumOf { it.purchase.grandTotal }
                 val totalPaid = supplierPayments.sumOf { it.amount }
-                val balance = totalPurchased - totalPaid
+                val totalReturned = supplierReturns.sumOf { it.returnNote.totalAmount }
+                val balance = totalPurchased - totalPaid - totalReturned
 
                 val lastBillDate = supplierPurchases.maxOfOrNull { it.purchase.dateMillis } ?: 0L
                 val lastPayDate = supplierPayments.maxOfOrNull { it.dateMillis } ?: 0L
-                val lastDate = maxOf(lastBillDate, lastPayDate)
+                val lastReturnDate = supplierReturns.maxOfOrNull { it.returnNote.dateMillis } ?: 0L
+                val lastDate = maxOf(lastBillDate, maxOf(lastPayDate, lastReturnDate))
 
                 SupplierBalanceSummary(
                     supplier = supplier,
                     totalPurchased = totalPurchased,
                     totalPaid = totalPaid,
+                    totalReturned = totalReturned,
                     balance = balance,
                     billCount = supplierPurchases.size,
                     paymentCount = supplierPayments.size,
+                    returnCount = supplierReturns.size,
                     lastTransactionDate = lastDate
                 )
             }.sortedByDescending { it.balance }
@@ -308,8 +368,9 @@ class DoorBillingRepository(
     fun getSupplierLedger(supplierId: Long): Flow<List<SupplierLedgerEntry>> =
         combine(
             purchaseDao.getPurchasesBySupplier(supplierId),
-            purchasePaymentDao.getPaymentsBySupplier(supplierId)
-        ) { purchases, payments ->
+            purchasePaymentDao.getPaymentsBySupplier(supplierId),
+            purchaseReturnDao.getReturnsBySupplier(supplierId)
+        ) { purchases, payments, returns ->
             val purchaseEntries: List<SupplierLedgerEntry> = purchases.map { purchaseWithItems ->
                 SupplierLedgerEntry.PurchaseBillEntry(
                     id = purchaseWithItems.purchase.id,
@@ -329,7 +390,15 @@ class DoorBillingRepository(
                 )
             }
 
-            (purchaseEntries + paymentEntries).sortedBy { it.dateMillis }
+            val returnEntries: List<SupplierLedgerEntry> = returns.map { returnWithItems ->
+                SupplierLedgerEntry.DebitNoteEntry(
+                    id = returnWithItems.returnNote.id,
+                    dateMillis = returnWithItems.returnNote.dateMillis,
+                    returnWithItems = returnWithItems
+                )
+            }
+
+            (purchaseEntries + paymentEntries + returnEntries).sortedBy { it.dateMillis }
         }
 
     suspend fun exportAllData(): AppBackupData {

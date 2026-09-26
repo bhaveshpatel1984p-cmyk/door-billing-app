@@ -168,7 +168,11 @@ object ShareHelper {
                     appendLine("⚠️ *Balance Due:* ₹${String.format(Locale.US, "%.2f", due)}")
                 }
             }
-            appendLine("Please find attached official PDF Tax Invoice.")
+            val effUpi = QrCodeHelper.resolveEffectiveUpiId(company)
+            if (effUpi.isNotBlank()) {
+                appendLine("📲 *Pay via UPI / QR:* $effUpi (PhonePe / GPay / Paytm)")
+            }
+            appendLine("Please find attached official PDF Tax Invoice with Scan & Pay QR Code.")
             appendLine("Thank you for your business! 🙏")
         }
     }

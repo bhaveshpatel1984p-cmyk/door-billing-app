@@ -22,7 +22,11 @@ object DimensionCalculator {
      * - Feet: (Height * Width) * Qty
      */
     fun calculateSqFt(height: Double, width: Double, qty: Int, unit: String): Double {
-        if (height <= 0 || width <= 0 || qty <= 0) return 0.0
+        return calculateSqFt(height, width, qty.toDouble(), unit)
+    }
+
+    fun calculateSqFt(height: Double, width: Double, qty: Double, unit: String): Double {
+        if (height <= 0 || width <= 0 || qty <= 0.0) return 0.0
         val baseSqFt = if (unit.equals("Inches", ignoreCase = true)) {
             (height * width) / 144.0
         } else {
@@ -30,6 +34,16 @@ object DimensionCalculator {
         }
         val total = baseSqFt * qty
         return Math.round(total * 100.0) / 100.0
+    }
+
+    fun formatQtyWithUnit(qty: Double, unit: String?): String {
+        val effectiveUnit = if (unit.isNullOrBlank()) "Pcs" else unit.trim()
+        val qtyStr = if (qty % 1.0 == 0.0) qty.toLong().toString() else String.format(Locale.US, "%.2f", qty).trimEnd('0').trimEnd('.')
+        return "$qtyStr $effectiveUnit"
+    }
+
+    fun formatQtyOnly(qty: Double): String {
+        return if (qty % 1.0 == 0.0) qty.toLong().toString() else String.format(Locale.US, "%.2f", qty).trimEnd('0').trimEnd('.')
     }
 
     /**

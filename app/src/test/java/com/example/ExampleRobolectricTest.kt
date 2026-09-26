@@ -92,4 +92,29 @@ class ExampleRobolectricTest {
     assertEquals("Vikram Singh", custNameOnly.primaryTitle)
     assertEquals(null, custNameOnly.subtitle)
   }
+
+  @Test
+  fun `qr code bitmap generation creates valid bitmap`() {
+    val company = com.example.data.db.CompanyProfileEntity()
+    val bmp = com.example.util.QrCodeHelper.getPaymentQrBitmap(company, 1250.0, 180)
+    org.junit.Assert.assertNotNull(bmp)
+    assertEquals(180, bmp!!.width)
+    assertEquals(180, bmp.height)
+  }
+
+  @Test
+  fun `bill entity has isGstIncluded default to false`() {
+    val bill = com.example.data.db.BillEntity(
+      invoiceNo = "INV/2026/0001",
+      customerId = 1L,
+      customerName = "Customer A",
+      customerMobile = "9876543210",
+      customerAddress = "Locality",
+      customerGstNo = "",
+      subTotal = 1000.0,
+      grandTotal = 1000.0
+    )
+    org.junit.Assert.assertFalse(bill.isGstIncluded)
+  }
 }
+

@@ -319,3 +319,71 @@ interface DoorPresetDao {
     suspend fun deletePreset(preset: DoorPresetEntity)
 }
 
+@Dao
+interface PurchaseReturnDao {
+    @Transaction
+    @Query("SELECT * FROM purchase_returns ORDER BY dateMillis DESC, id DESC")
+    fun getAllReturnsWithItems(): Flow<List<PurchaseReturnWithItems>>
+
+    @Transaction
+    @Query("SELECT * FROM purchase_returns WHERE supplierId = :supplierId ORDER BY dateMillis DESC, id DESC")
+    fun getReturnsBySupplier(supplierId: Long): Flow<List<PurchaseReturnWithItems>>
+
+    @Transaction
+    @Query("SELECT * FROM purchase_returns WHERE id = :returnId")
+    suspend fun getReturnWithItemsById(returnId: Long): PurchaseReturnWithItems?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReturn(returnEntity: PurchaseReturnEntity): Long
+
+    @Update
+    suspend fun updateReturn(returnEntity: PurchaseReturnEntity)
+
+    @Query("DELETE FROM purchase_returns WHERE id = :returnId")
+    suspend fun deleteReturnById(returnId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReturnItems(items: List<PurchaseReturnItemEntity>)
+
+    @Query("DELETE FROM purchase_return_items WHERE returnId = :returnId")
+    suspend fun deleteItemsByReturnId(returnId: Long)
+
+    @Transaction
+    suspend fun saveReturnWithItems(returnEntity: PurchaseReturnEntity, items: List<PurchaseReturnItemEntity>): Long {
+        val returnId = if (returnEntity.id == 0L) {
+            insertReturn(returnEntity)
+        } else {
+            updateReturn(returnEntity)
+            deleteItemsByReturnId(returnEntity.id)
+            returnEntity.id
+        }
+        val itemsWithId = items.map { it.copy(returnId = returnId) }
+        insertReturnItems(itemsWithId)
+        return returnId
+    }
+
+    @Query("SELECT COUNT(*) FROM purchase_returns")
+    suspend fun getTotalReturnsCount(): Int
+}
+
+@Dao
+interface RawMaterialCatalogDao {
+    @Query("SELECT * FROM raw_materials ORDER BY name ASC")
+    fun getAllMaterials(): Flow<List<RawMaterialCatalogEntity>>
+
+    @Query("SELECT COUNT(*) FROM raw_materials")
+    suspend fun getMaterialsCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMaterial(material: RawMaterialCatalogEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMaterials(materials: List<RawMaterialCatalogEntity>)
+
+    @Update
+    suspend fun updateMaterial(material: RawMaterialCatalogEntity)
+
+    @Delete
+    suspend fun deleteMaterial(material: RawMaterialCatalogEntity)
+}
+

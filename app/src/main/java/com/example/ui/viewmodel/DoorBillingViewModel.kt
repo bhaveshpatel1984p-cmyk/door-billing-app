@@ -19,7 +19,12 @@ import com.example.data.db.PurchaseWithItems
 import com.example.data.db.SupplierBalanceSummary
 import com.example.data.db.SupplierEntity
 import com.example.data.db.SupplierLedgerEntry
+import com.example.data.db.PurchaseReturnEntity
+import com.example.data.db.PurchaseReturnItemEntity
+import com.example.data.db.PurchaseReturnWithItems
+import com.example.data.db.RawMaterialCatalogEntity
 import com.example.data.db.DoorPresetEntity
+import java.util.Calendar
 import com.example.data.repository.DoorBillingRepository
 import com.example.util.DimensionCalculator
 import android.content.Context
@@ -89,8 +94,19 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             supplierDao = database.supplierDao(),
             purchaseDao = database.purchaseDao(),
             purchasePaymentDao = database.purchasePaymentDao(),
-            doorPresetDao = database.doorPresetDao()
+            doorPresetDao = database.doorPresetDao(),
+            purchaseReturnDao = database.purchaseReturnDao(),
+            rawMaterialCatalogDao = database.rawMaterialCatalogDao()
         )
+
+        // Initialize default raw material catalog if empty
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.initDefaultRawMaterialsIfEmpty()
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
 
         // Initialize Google Account state
         refreshGoogleAccount()
@@ -262,7 +278,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val selectedCustomerDraft = MutableStateFlow<CustomerEntity?>(null)
     val dimensionUnitDraft = MutableStateFlow("Inches") // "Inches" or "Feet"
     val taxRateDraft = MutableStateFlow(18.0) // 18% GST default
-    val isGstIncludedDraft = MutableStateFlow(true)
+    val isGstIncludedDraft = MutableStateFlow(false)
     val discountDraft = MutableStateFlow(0.0)
     val otherChargesDraft = MutableStateFlow(0.0)
     val otherChargesDescDraft = MutableStateFlow("Cutting Charges")
@@ -424,7 +440,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             }
             dimensionUnitDraft.value = "Inches"
             taxRateDraft.value = 18.0
-            isGstIncludedDraft.value = true
+            isGstIncludedDraft.value = false
             discountDraft.value = 0.0
             otherChargesDraft.value = 0.0
             otherChargesDescDraft.value = "Cutting Charges"
@@ -792,6 +808,12 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val allPurchases: StateFlow<List<PurchaseWithItems>> = repository.allPurchasesWithItems
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allPurchaseReturns: StateFlow<List<PurchaseReturnWithItems>> = repository.allPurchaseReturns
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allRawMaterials: StateFlow<List<RawMaterialCatalogEntity>> = repository.allRawMaterials
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val supplierBalances: StateFlow<List<SupplierBalanceSummary>> = repository.supplierBalances
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -861,18 +883,50 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val purchaseDateMillisDraft = MutableStateFlow(System.currentTimeMillis())
     val purchaseDimensionUnitDraft = MutableStateFlow("Inches")
     val purchaseTaxRateDraft = MutableStateFlow(18.0)
-    val purchaseIsGstIncludedDraft = MutableStateFlow(true)
+    val purchaseIsGstIncludedDraft = MutableStateFlow(false)
     val purchaseDiscountDraft = MutableStateFlow(0.0)
+    val purchaseDiscountTypeDraft = MutableStateFlow("FLAT") // "FLAT" or "PERCENT"
+    val purchaseDiscountPercentDraft = MutableStateFlow(0.0)
     val purchaseOtherChargesDraft = MutableStateFlow(0.0)
     val purchaseOtherChargesDescDraft = MutableStateFlow("Transportation")
     val purchaseIsRoundOffAutoDraft = MutableStateFlow(true)
     val purchaseRoundOffDraft = MutableStateFlow(0.0)
     val purchasePaidAmountDraft = MutableStateFlow(0.0)
     val purchaseNotesDraft = MutableStateFlow("")
+    val purchaseBillPhotoUriDraft = MutableStateFlow("")
+    val purchaseTransportNameDraft = MutableStateFlow("")
+    val purchaseVehicleNoDraft = MutableStateFlow("")
+    val purchaseLrBiltyNoDraft = MutableStateFlow("")
     val purchaseItemsDraft = MutableStateFlow<List<PurchaseItemEntity>>(emptyList())
 
     fun setPurchaseDate(dateMillis: Long) {
         purchaseDateMillisDraft.value = dateMillis
+    }
+
+    fun setPurchaseDiscountType(type: String) {
+        purchaseDiscountTypeDraft.value = type
+        recalculatePurchaseDiscount()
+    }
+
+    fun setPurchaseDiscountPercent(percent: Double) {
+        purchaseDiscountPercentDraft.value = percent
+        recalculatePurchaseDiscount()
+    }
+
+    fun setPurchaseDiscountFlat(amount: Double) {
+        purchaseDiscountDraft.value = amount
+    }
+
+    fun recalculatePurchaseDiscount() {
+        if (purchaseDiscountTypeDraft.value == "PERCENT") {
+            val subTotal = purchaseItemsDraft.value.sumOf { it.amount }
+            val computed = (subTotal * purchaseDiscountPercentDraft.value) / 100.0
+            purchaseDiscountDraft.value = Math.round(computed * 100.0) / 100.0
+        }
+    }
+
+    fun setPurchaseBillPhoto(uri: String) {
+        purchaseBillPhotoUriDraft.value = uri
     }
 
     // Purchase Item Inputs
@@ -882,6 +936,30 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val purchaseItemWidthInput = MutableStateFlow("")
     val purchaseItemQtyInput = MutableStateFlow("1")
     val purchaseItemRateInput = MutableStateFlow("")
+    val purchaseItemUnitInput = MutableStateFlow("Pcs")
+
+    val standardPurchaseUnits = listOf(
+        "Pcs",
+        "Kg",
+        "Ltr",
+        "Meter",
+        "Box",
+        "Sq.Ft",
+        "Bundle",
+        "Packet",
+        "Set",
+        "Ton",
+        "Roll",
+        "Bag",
+        "Pair"
+    )
+
+    fun setPurchaseItemUnit(unit: String) {
+        val trimmed = unit.trim()
+        if (trimmed.isNotBlank()) {
+            purchaseItemUnitInput.value = trimmed
+        }
+    }
 
     fun resetPurchaseItemInputs() {
         purchaseItemParticularInput.value = ""
@@ -890,6 +968,21 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         purchaseItemWidthInput.value = ""
         purchaseItemQtyInput.value = "1"
         purchaseItemRateInput.value = ""
+        purchaseItemUnitInput.value = "Pcs"
+    }
+
+    fun startEditPurchaseItem(index: Int) {
+        val currentList = purchaseItemsDraft.value
+        if (index in currentList.indices) {
+            val item = currentList[index]
+            purchaseItemParticularInput.value = item.particular
+            purchaseItemHsnInput.value = item.hsnSac
+            purchaseItemHeightInput.value = if (item.height > 0) DimensionCalculator.formatDimension(item.height) else ""
+            purchaseItemWidthInput.value = if (item.width > 0) DimensionCalculator.formatDimension(item.width) else ""
+            purchaseItemQtyInput.value = DimensionCalculator.formatQtyOnly(item.qty)
+            purchaseItemRateInput.value = if (item.rate > 0) String.format(java.util.Locale.US, "%.2f", item.rate) else ""
+            purchaseItemUnitInput.value = item.unit.ifBlank { "Pcs" }
+        }
     }
 
     fun startNewPurchase(presetSupplier: SupplierEntity? = null) {
@@ -899,14 +992,20 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         purchaseSupplierDraft.value = presetSupplier
         purchaseDimensionUnitDraft.value = "Inches"
         purchaseTaxRateDraft.value = 18.0
-        purchaseIsGstIncludedDraft.value = true
+        purchaseIsGstIncludedDraft.value = false
         purchaseDiscountDraft.value = 0.0
+        purchaseDiscountTypeDraft.value = "FLAT"
+        purchaseDiscountPercentDraft.value = 0.0
         purchaseOtherChargesDraft.value = 0.0
         purchaseOtherChargesDescDraft.value = "Transportation"
         purchaseIsRoundOffAutoDraft.value = true
         purchaseRoundOffDraft.value = 0.0
         purchasePaidAmountDraft.value = 0.0
         purchaseNotesDraft.value = ""
+        purchaseBillPhotoUriDraft.value = ""
+        purchaseTransportNameDraft.value = ""
+        purchaseVehicleNoDraft.value = ""
+        purchaseLrBiltyNoDraft.value = ""
         purchaseItemsDraft.value = emptyList()
         resetPurchaseItemInputs()
     }
@@ -929,12 +1028,18 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         purchaseTaxRateDraft.value = purchase.taxRate
         purchaseIsGstIncludedDraft.value = purchase.isGstIncluded
         purchaseDiscountDraft.value = purchase.discountAmount
+        purchaseDiscountTypeDraft.value = purchase.discountType
+        purchaseDiscountPercentDraft.value = purchase.discountPercent
         purchaseOtherChargesDraft.value = purchase.otherCharges
         purchaseOtherChargesDescDraft.value = purchase.otherChargesDescription
         purchaseRoundOffDraft.value = purchase.roundOffAmount
         purchaseIsRoundOffAutoDraft.value = (purchase.roundOffAmount != 0.0)
         purchasePaidAmountDraft.value = purchase.paidAmount
         purchaseNotesDraft.value = purchase.notes
+        purchaseBillPhotoUriDraft.value = purchase.billPhotoUri
+        purchaseTransportNameDraft.value = purchase.transportName
+        purchaseVehicleNoDraft.value = purchase.vehicleNo
+        purchaseLrBiltyNoDraft.value = purchase.lrBiltyNo
         purchaseItemsDraft.value = purchaseWithItems.items
         resetPurchaseItemInputs()
     }
@@ -943,15 +1048,16 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         val particular = purchaseItemParticularInput.value.trim()
         val height = purchaseItemHeightInput.value.toDoubleOrNull() ?: 0.0
         val width = purchaseItemWidthInput.value.toDoubleOrNull() ?: 0.0
-        val qty = purchaseItemQtyInput.value.toIntOrNull() ?: 1
+        val qty = purchaseItemQtyInput.value.toDoubleOrNull() ?: 1.0
         val rate = purchaseItemRateInput.value.toDoubleOrNull() ?: 0.0
+        val unit = purchaseItemUnitInput.value.trim().ifBlank { "Pcs" }
 
         if (particular.isBlank()) {
             showMessage("Please enter item description / material")
             return
         }
-        if (qty <= 0) {
-            showMessage("Quantity must be at least 1")
+        if (qty <= 0.0) {
+            showMessage("Quantity must be greater than 0")
             return
         }
         if (rate <= 0) {
@@ -962,7 +1068,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         val sqFt = if (height > 0 && width > 0) {
             DimensionCalculator.calculateSqFt(height, width, qty, purchaseDimensionUnitDraft.value)
         } else {
-            qty.toDouble()
+            qty
         }
         val amount = if (height > 0 && width > 0) {
             DimensionCalculator.calculateAmount(sqFt, rate)
@@ -983,17 +1089,20 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             qty = qty,
             sqFt = sqFt,
             rate = rate,
-            amount = amount
+            amount = amount,
+            unit = unit
         )
 
         if (editingIndex != null && editingIndex in currentList.indices) {
             currentList[editingIndex] = newItem
+            showMessage("Item updated in purchase bill")
         } else {
             currentList.add(newItem)
+            showMessage("Item added to purchase bill")
         }
         purchaseItemsDraft.value = currentList.mapIndexed { idx, itm -> itm.copy(slNo = idx + 1) }
+        recalculatePurchaseDiscount()
         resetPurchaseItemInputs()
-        showMessage("Item added to purchase bill")
     }
 
     fun removeItemFromPurchase(index: Int) {
@@ -1001,6 +1110,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         if (index in currentList.indices) {
             currentList.removeAt(index)
             purchaseItemsDraft.value = currentList.mapIndexed { idx, itm -> itm.copy(slNo = idx + 1) }
+            recalculatePurchaseDiscount()
             showMessage("Item removed")
         }
     }
@@ -1050,12 +1160,18 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
                 sgstAmount = halfGst,
                 igstAmount = 0.0,
                 discountAmount = purchaseDiscountDraft.value,
+                discountType = purchaseDiscountTypeDraft.value,
+                discountPercent = purchaseDiscountPercentDraft.value,
                 otherCharges = otherCharges,
                 otherChargesDescription = otherChargesDesc,
                 roundOffAmount = roundOff,
                 grandTotal = grandTotal,
                 paidAmount = purchasePaidAmountDraft.value,
-                notes = purchaseNotesDraft.value.trim()
+                notes = purchaseNotesDraft.value.trim(),
+                billPhotoUri = purchaseBillPhotoUriDraft.value,
+                transportName = purchaseTransportNameDraft.value.trim(),
+                vehicleNo = purchaseVehicleNoDraft.value.trim(),
+                lrBiltyNo = purchaseLrBiltyNoDraft.value.trim()
             )
 
             val savedId = repository.savePurchase(purchaseEntity, items)
@@ -1079,6 +1195,58 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
 
             showMessage("Purchase Bill #${finalPurchase.invoiceNo} saved successfully!")
             onSaved(finalWithItems)
+        }
+    }
+
+    // Purchase Returns / Debit Notes
+    fun getNextDebitNoteNo(): String {
+        val count = allPurchaseReturns.value.size + 1
+        val cal = Calendar.getInstance()
+        val year = cal.get(Calendar.YEAR)
+        return "DN-$year-${String.format(java.util.Locale.US, "%03d", count)}"
+    }
+
+    fun savePurchaseReturn(
+        returnEntity: PurchaseReturnEntity,
+        items: List<PurchaseReturnItemEntity>,
+        onSaved: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val savedId = repository.savePurchaseReturn(returnEntity, items)
+            showMessage("Debit Note #${returnEntity.returnNo} recorded! Supplier balance updated.")
+            onSaved()
+        }
+    }
+
+    fun deletePurchaseReturn(returnId: Long) {
+        viewModelScope.launch {
+            repository.deletePurchaseReturn(returnId)
+            showMessage("Debit note deleted")
+        }
+    }
+
+    // Raw Material Catalog Management
+    fun selectRawMaterialToItem(material: RawMaterialCatalogEntity) {
+        purchaseItemParticularInput.value = material.name
+        purchaseItemHsnInput.value = material.hsnSac
+        purchaseItemUnitInput.value = material.defaultUnit.ifBlank { "Pcs" }
+        if (material.defaultRate > 0) {
+            purchaseItemRateInput.value = String.format(java.util.Locale.US, "%.2f", material.defaultRate)
+        }
+        showMessage("Selected '${material.name}' (${material.defaultUnit})")
+    }
+
+    fun saveRawMaterial(material: RawMaterialCatalogEntity) {
+        viewModelScope.launch {
+            repository.saveRawMaterial(material)
+            showMessage("Material '${material.name}' saved to catalog")
+        }
+    }
+
+    fun deleteRawMaterial(material: RawMaterialCatalogEntity) {
+        viewModelScope.launch {
+            repository.deleteRawMaterial(material)
+            showMessage("Material '${material.name}' removed from catalog")
         }
     }
 

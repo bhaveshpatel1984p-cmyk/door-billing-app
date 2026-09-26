@@ -212,6 +212,7 @@ data class AppBackupData(
             o.put("sqFt", pi.sqFt)
             o.put("rate", pi.rate)
             o.put("amount", pi.amount)
+            o.put("unit", pi.unit)
             purItemsArray.put(o)
         }
         root.put("purchaseItems", purItemsArray)
@@ -445,10 +446,11 @@ data class AppBackupData(
                             hsnSac = o.optString("hsnSac", "4418"),
                             height = o.optDouble("height", 0.0),
                             width = o.optDouble("width", 0.0),
-                            qty = o.optInt("qty", 1),
+                            qty = o.optDouble("qty", 1.0),
                             sqFt = o.optDouble("sqFt", 0.0),
                             rate = o.optDouble("rate", 0.0),
-                            amount = o.optDouble("amount", 0.0)
+                            amount = o.optDouble("amount", 0.0),
+                            unit = o.optString("unit", "Pcs")
                         )
                     )
                 }

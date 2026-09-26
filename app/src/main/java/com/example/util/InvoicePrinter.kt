@@ -276,7 +276,7 @@ object InvoicePrinter {
                 .items-table { width: 100%; border-collapse: collapse; }
                 .items-table th { background-color: #0369A1; color: white; padding: 6px 4px; font-size: 10px; text-align: center; border: 1px solid #0369A1; }
                 .terms-table { width: 100%; border-collapse: collapse; border-top: 1px solid #333; }
-                .terms-table td { width: 50%; vertical-align: top; padding: 8px 12px; }
+                .terms-table td { vertical-align: top; padding: 8px 12px; }
                 .total-row { background-color: #f8fafc; font-weight: bold; }
                 .grand-total-box { background-color: #0369A1; color: white; font-size: 14px; font-weight: bold; padding: 6px 10px; }
             </style>
@@ -682,6 +682,304 @@ object InvoicePrinter {
                     </div>
                     <div style="text-align:center;">
                         <div style="margin-bottom:30px;">For ${company.businessName}</div>
+                        <div style="border-top:1px dashed #777; padding-top:2px;">Authorized Signatory</div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    /**
+     * Prints Purchase Bill Invoice
+     */
+    fun printPurchaseBill(
+        context: Context,
+        purchaseWithItems: com.example.data.db.PurchaseWithItems,
+        company: CompanyProfileEntity
+    ) {
+        val htmlContent = generatePurchaseBillHtml(purchaseWithItems, company)
+        val cleanName = purchaseWithItems.purchase.invoiceNo.replace("/", "_").replace(" ", "_")
+        printHtml(context, htmlContent, "Purchase_$cleanName")
+    }
+
+    fun generatePurchaseBillHtml(
+        purchaseWithItems: com.example.data.db.PurchaseWithItems,
+        company: CompanyProfileEntity
+    ): String {
+        val purchase = purchaseWithItems.purchase
+        val items = purchaseWithItems.items
+
+        val rows = items.joinToString("\n") { item ->
+            val sizeStr = if (item.height > 0 && item.width > 0) {
+                "<br><span style='font-size:10px; color:#555;'>Size: ${DimensionCalculator.formatDimension(item.height)} × ${DimensionCalculator.formatDimension(item.width)} (${String.format(java.util.Locale.US, "%.1f", item.sqFt)} sqft)</span>"
+            } else ""
+            """
+            <tr>
+                <td style="text-align:center; padding:7px 4px; border:1px solid #333;">${item.slNo}</td>
+                <td style="padding:7px 8px; border:1px solid #333; font-weight:600;">${item.particular}$sizeStr</td>
+                <td style="text-align:center; padding:7px 4px; border:1px solid #333; color:#555;">${item.hsnSac}</td>
+                <td style="text-align:center; padding:7px 6px; border:1px solid #333; font-weight:bold; background-color:#f0fdfa;">${item.formattedQtyWithUnit}</td>
+                <td style="text-align:right; padding:7px 6px; border:1px solid #333;">₹${String.format(java.util.Locale.US, "%.2f", item.rate)}</td>
+                <td style="text-align:right; padding:7px 6px; border:1px solid #333; font-weight:bold;">₹${String.format(java.util.Locale.US, "%.2f", item.amount)}</td>
+            </tr>
+            """.trimIndent()
+        }
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Purchase Bill - ${purchase.invoiceNo}</title>
+            <style>
+                @page { size: A4; margin: 12mm; }
+                body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
+                .container { border: 2px solid #0F766E; padding: 0; box-sizing: border-box; }
+                .top-title-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0F766E; background-color: #CCFBF1; padding: 7px 12px; }
+                .header-table { width: 100%; border-collapse: collapse; border-bottom: 2px solid #0F766E; }
+                .header-table td { padding: 9px 12px; vertical-align: top; }
+                .items-table { width: 100%; border-collapse: collapse; }
+                .items-table th { background-color: #0F766E; color: white; padding: 7px 4px; font-size: 10.5px; text-align: center; border: 1px solid #0F766E; }
+                .summary-table { width: 100%; border-collapse: collapse; }
+                .summary-table td { padding: 5px 8px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="top-title-bar">
+                    <div style="font-weight:bold; font-size:14px; color:#0F766E; letter-spacing:1px;">PURCHASE INVOICE / VOUCHER</div>
+                    <div style="font-size:11px; font-weight:bold;">Bill No: ${purchase.invoiceNo} | Date: ${DimensionCalculator.formatDate(purchase.dateMillis)}</div>
+                </div>
+
+                ${if (purchase.transportName.isNotBlank() || purchase.vehicleNo.isNotBlank() || purchase.lrBiltyNo.isNotBlank()) """
+                <div style="background-color:#F8FAFC; border-bottom:1px solid #0F766E; padding:5px 12px; font-size:10px; color:#334155; display:flex; gap:16px;">
+                    ${if (purchase.transportName.isNotBlank()) "<div>Transport: <strong>" + purchase.transportName + "</strong></div>" else ""}
+                    ${if (purchase.vehicleNo.isNotBlank()) "<div>Vehicle No: <strong>" + purchase.vehicleNo + "</strong></div>" else ""}
+                    ${if (purchase.lrBiltyNo.isNotBlank()) "<div>LR / Bilty No: <strong>" + purchase.lrBiltyNo + "</strong></div>" else ""}
+                </div>
+                """ else ""}
+
+                <table class="header-table">
+                    <tr>
+                        <td style="width:50%; border-right:1px solid #0F766E;">
+                            <div style="font-size:10px; font-weight:bold; color:#0F766E; text-transform:uppercase;">Billed By (Supplier / Vendor):</div>
+                            <div style="font-size:14px; font-weight:bold; margin-top:3px; color:#0F172A;">${purchase.supplierName}</div>
+                            ${if (purchase.supplierMobile.isNotBlank()) "<div style='margin-top:2px;'>Phone: <strong>" + purchase.supplierMobile + "</strong></div>" else ""}
+                            ${if (purchase.supplierAddress.isNotBlank()) "<div style='margin-top:2px;'>Address: " + purchase.supplierAddress + "</div>" else ""}
+                            ${if (purchase.supplierGstNo.isNotBlank()) "<div style='margin-top:2px;'>GSTIN: <strong>" + purchase.supplierGstNo + "</strong></div>" else ""}
+                        </td>
+                        <td style="width:50%;">
+                            <div style="font-size:10px; font-weight:bold; color:#0F766E; text-transform:uppercase;">Delivered To / Buyer:</div>
+                            <div style="font-size:14px; font-weight:bold; margin-top:3px; color:#0F766E;">${company.businessName}</div>
+                            <div style="margin-top:2px;">${company.fullAddress}</div>
+                            <div style="margin-top:2px;">Phone: <strong>${company.displayMobile}</strong></div>
+                            ${if (company.gstNo.isNotBlank()) "<div style='margin-top:2px;'>GSTIN: <strong>" + company.gstNo + "</strong></div>" else ""}
+                        </td>
+                    </tr>
+                </table>
+
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th style="width:5%;">Sl.</th>
+                            <th style="width:45%;">Item Description / Particular</th>
+                            <th style="width:10%;">HSN/SAC</th>
+                            <th style="width:15%;">Qty & Unit</th>
+                            <th style="width:12%;">Rate (₹)</th>
+                            <th style="width:13%;">Amount (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        $rows
+                    </tbody>
+                </table>
+
+                <table class="summary-table" style="border-top:1.5px solid #0F766E;">
+                    <tr>
+                        <td style="width:55%; vertical-align:top; border-right:1px solid #0F766E; padding:10px 12px;">
+                            <div><strong>Total Items:</strong> ${items.size}</div>
+                            <div style="margin-top:4px; font-size:10px; color:#555;">Purchased in good condition. Verified and entered into inventory records.</div>
+                            ${if (purchase.notes.isNotBlank()) "<div style='margin-top:6px;'><strong>Notes:</strong> " + purchase.notes + "</div>" else ""}
+                        </td>
+                        <td style="width:45%; vertical-align:top; padding:8px 12px;">
+                            <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                                <tr>
+                                    <td>Sub Total:</td>
+                                    <td style="text-align:right; font-weight:600;">₹${String.format(java.util.Locale.US, "%.2f", purchase.subTotal)}</td>
+                                </tr>
+                                ${if (purchase.isGstIncluded && purchase.taxRate > 0) """
+                                <tr>
+                                    <td>CGST (${purchase.taxRate / 2}%):</td>
+                                    <td style="text-align:right;">₹${String.format(java.util.Locale.US, "%.2f", purchase.cgstAmount)}</td>
+                                </tr>
+                                <tr>
+                                    <td>SGST (${purchase.taxRate / 2}%):</td>
+                                    <td style="text-align:right;">₹${String.format(java.util.Locale.US, "%.2f", purchase.sgstAmount)}</td>
+                                </tr>
+                                """ else ""}
+                                ${if (purchase.otherCharges > 0) """
+                                <tr>
+                                    <td>Other Charges (${purchase.otherChargesDescription}):</td>
+                                    <td style="text-align:right;">₹${String.format(java.util.Locale.US, "%.2f", purchase.otherCharges)}</td>
+                                </tr>
+                                """ else ""}
+                                ${if (purchase.discountAmount > 0) """
+                                <tr>
+                                    <td>Discount:</td>
+                                    <td style="text-align:right; color:#dc2626;">- ₹${String.format(java.util.Locale.US, "%.2f", purchase.discountAmount)}</td>
+                                </tr>
+                                """ else ""}
+                                ${if (purchase.roundOffAmount != 0.0) """
+                                <tr>
+                                    <td>Round Off:</td>
+                                    <td style="text-align:right;">${if (purchase.roundOffAmount > 0) "+" else ""}₹${String.format(java.util.Locale.US, "%.2f", purchase.roundOffAmount)}</td>
+                                </tr>
+                                """ else ""}
+                                <tr style="border-top:1.5px solid #0F766E; font-size:13px; font-weight:bold; color:#0F766E;">
+                                    <td style="padding-top:4px;">Grand Total:</td>
+                                    <td style="padding-top:4px; text-align:right;">₹${String.format(java.util.Locale.US, "%.2f", purchase.grandTotal)}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color:#16a34a; font-weight:600;">Paid Amount:</td>
+                                    <td style="text-align:right; color:#16a34a; font-weight:600;">₹${String.format(java.util.Locale.US, "%.2f", purchase.paidAmount)}</td>
+                                </tr>
+                                <tr>
+                                    <td style="color:#dc2626; font-weight:bold;">Balance Due:</td>
+                                    <td style="text-align:right; color:#dc2626; font-weight:bold;">₹${String.format(java.util.Locale.US, "%.2f", Math.max(0.0, purchase.grandTotal - purchase.paidAmount))}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+
+                <div style="padding:14px 12px; display:flex; justify-content:space-between; align-items:flex-end; font-size:10px; color:#555; border-top:1px solid #0F766E;">
+                    <div>Receiver's Signature</div>
+                    <div style="text-align:center;">
+                        <div style="margin-bottom:28px;">For <strong>${purchase.supplierName}</strong></div>
+                        <div style="border-top:1px dashed #777; padding-top:2px;">Supplier / Authorized Signatory</div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    /**
+     * Prints Debit Note / Purchase Return Voucher
+     */
+    fun printDebitNote(
+        context: Context,
+        returnWithItems: com.example.data.db.PurchaseReturnWithItems,
+        company: CompanyProfileEntity
+    ) {
+        val htmlContent = generateDebitNoteHtml(returnWithItems, company)
+        val cleanName = returnWithItems.returnNote.returnNo.replace("/", "_").replace(" ", "_")
+        printHtml(context, htmlContent, "DebitNote_$cleanName")
+    }
+
+    fun generateDebitNoteHtml(
+        returnWithItems: com.example.data.db.PurchaseReturnWithItems,
+        company: CompanyProfileEntity
+    ): String {
+        val ret = returnWithItems.returnNote
+        val items = returnWithItems.items
+
+        val rows = items.joinToString("\n") { item ->
+            """
+            <tr>
+                <td style="text-align:center; padding:7px 4px; border:1px solid #333;">${item.slNo}</td>
+                <td style="padding:7px 8px; border:1px solid #333; font-weight:600;">${item.particular}</td>
+                <td style="text-align:center; padding:7px 6px; border:1px solid #333; font-weight:bold; background-color:#fff1f2;">${item.formattedQtyWithUnit}</td>
+                <td style="text-align:right; padding:7px 6px; border:1px solid #333;">₹${String.format(java.util.Locale.US, "%.2f", item.rate)}</td>
+                <td style="text-align:right; padding:7px 6px; border:1px solid #333; font-weight:bold; color:#e11d48;">₹${String.format(java.util.Locale.US, "%.2f", item.amount)}</td>
+            </tr>
+            """.trimIndent()
+        }
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Debit Note - ${ret.returnNo}</title>
+            <style>
+                @page { size: A4; margin: 12mm; }
+                body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
+                .container { border: 2px solid #E11D48; padding: 0; box-sizing: border-box; }
+                .top-title-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #E11D48; background-color: #FFE4E6; padding: 7px 12px; }
+                .header-table { width: 100%; border-collapse: collapse; border-bottom: 2px solid #E11D48; }
+                .header-table td { padding: 9px 12px; vertical-align: top; }
+                .items-table { width: 100%; border-collapse: collapse; }
+                .items-table th { background-color: #E11D48; color: white; padding: 7px 4px; font-size: 10.5px; text-align: center; border: 1px solid #E11D48; }
+                .summary-table { width: 100%; border-collapse: collapse; }
+                .summary-table td { padding: 5px 8px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="top-title-bar">
+                    <div style="font-weight:bold; font-size:14px; color:#E11D48; letter-spacing:1px;">DEBIT NOTE / PURCHASE RETURN</div>
+                    <div style="font-size:11px; font-weight:bold;">DN No: ${ret.returnNo} | Date: ${DimensionCalculator.formatDate(ret.dateMillis)}</div>
+                </div>
+
+                <table class="header-table">
+                    <tr>
+                        <td style="width:50%; border-right:1px solid #E11D48;">
+                            <div style="font-size:10px; font-weight:bold; color:#E11D48; text-transform:uppercase;">Debit To (Supplier / Vendor):</div>
+                            <div style="font-size:14px; font-weight:bold; margin-top:3px; color:#0F172A;">${ret.supplierName}</div>
+                            ${if (ret.purchaseInvoiceNo.isNotBlank()) "<div style='margin-top:4px;'>Against Purchase Bill: <strong>" + ret.purchaseInvoiceNo + "</strong></div>" else ""}
+                            <div style="margin-top:4px; color:#BE123C;"><strong>Reason:</strong> ${ret.reason}</div>
+                        </td>
+                        <td style="width:50%;">
+                            <div style="font-size:10px; font-weight:bold; color:#E11D48; text-transform:uppercase;">Issued By (Buyer):</div>
+                            <div style="font-size:14px; font-weight:bold; margin-top:3px; color:#E11D48;">${company.businessName}</div>
+                            <div style="margin-top:2px;">${company.fullAddress}</div>
+                            <div style="margin-top:2px;">Phone: <strong>${company.displayMobile}</strong></div>
+                            ${if (company.gstNo.isNotBlank()) "<div style='margin-top:2px;'>GSTIN: <strong>" + company.gstNo + "</strong></div>" else ""}
+                        </td>
+                    </tr>
+                </table>
+
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th style="width:6%;">Sl.</th>
+                            <th style="width:50%;">Returned Item Description</th>
+                            <th style="width:16%;">Qty & Unit</th>
+                            <th style="width:14%;">Rate (₹)</th>
+                            <th style="width:14%;">Amount (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        $rows
+                    </tbody>
+                </table>
+
+                <table class="summary-table" style="border-top:1.5px solid #E11D48;">
+                    <tr>
+                        <td style="width:60%; vertical-align:top; border-right:1px solid #E11D48; padding:10px 12px;">
+                            <div><strong>Total Returned Items:</strong> ${items.size}</div>
+                            <div style="margin-top:4px; font-size:10px; color:#555;">Goods returned due to: <strong>${ret.reason}</strong>. This amount has been debited against supplier balance.</div>
+                            ${if (ret.notes.isNotBlank()) "<div style='margin-top:6px;'><strong>Notes:</strong> " + ret.notes + "</div>" else ""}
+                        </td>
+                        <td style="width:40%; vertical-align:top; padding:8px 12px;">
+                            <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                                <tr style="font-size:13px; font-weight:bold; color:#E11D48;">
+                                    <td style="padding:6px 0;">Total Debit Amount:</td>
+                                    <td style="padding:6px 0; text-align:right;">₹${String.format(java.util.Locale.US, "%.2f", ret.totalAmount)}</td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+
+                <div style="padding:14px 12px; display:flex; justify-content:space-between; align-items:flex-end; font-size:10px; color:#555; border-top:1px solid #E11D48;">
+                    <div>Receiver's / Transporter's Signature</div>
+                    <div style="text-align:center;">
+                        <div style="margin-bottom:28px;">For <strong>${company.businessName}</strong></div>
                         <div style="border-top:1px dashed #777; padding-top:2px;">Authorized Signatory</div>
                     </div>
                 </div>

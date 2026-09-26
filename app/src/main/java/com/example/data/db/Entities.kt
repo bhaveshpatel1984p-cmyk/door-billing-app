@@ -48,7 +48,7 @@ data class BillEntity(
     val dateMillis: Long = System.currentTimeMillis(),
     val dimensionUnit: String = "Inches", // "Inches" or "Feet"
     val taxRate: Double = 18.0, // Default 18% GST (9% CGST + 9% SGST)
-    val isGstIncluded: Boolean = true,
+    val isGstIncluded: Boolean = false,
     val subTotal: Double = 0.0,
     val cgstAmount: Double = 0.0,
     val sgstAmount: Double = 0.0,
@@ -248,6 +248,12 @@ data class PurchaseEntity(
     val grandTotal: Double = 0.0,
     val paidAmount: Double = 0.0,
     val notes: String = "",
+    val billPhotoUri: String = "",
+    val transportName: String = "",
+    val vehicleNo: String = "",
+    val lrBiltyNo: String = "",
+    val discountType: String = "FLAT", // "FLAT" or "PERCENT"
+    val discountPercent: Double = 0.0,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -272,11 +278,18 @@ data class PurchaseItemEntity(
     val hsnSac: String = "4418",
     val height: Double = 0.0,
     val width: Double = 0.0,
-    val qty: Int = 1,
+    val qty: Double = 1.0,
     val sqFt: Double = 0.0,
     val rate: Double = 0.0,
-    val amount: Double = 0.0
-)
+    val amount: Double = 0.0,
+    val unit: String = "Pcs"
+) {
+    val formattedQty: String
+        get() = if (qty % 1.0 == 0.0) qty.toLong().toString() else String.format(java.util.Locale.US, "%.2f", qty).trimEnd('0').trimEnd('.')
+
+    val formattedQtyWithUnit: String
+        get() = "$formattedQty ${unit.ifBlank { "Pcs" }}"
+}
 
 @Entity(
     tableName = "purchase_payments",
@@ -309,9 +322,11 @@ data class SupplierBalanceSummary(
     val supplier: SupplierEntity,
     val totalPurchased: Double,
     val totalPaid: Double,
-    val balance: Double, // totalPurchased - totalPaid
+    val totalReturned: Double = 0.0,
+    val balance: Double, // totalPurchased - totalPaid - totalReturned
     val billCount: Int,
     val paymentCount: Int,
+    val returnCount: Int = 0,
     val lastTransactionDate: Long
 )
 
@@ -319,7 +334,7 @@ sealed class SupplierLedgerEntry {
     abstract val id: Long
     abstract val dateMillis: Long
     abstract val description: String
-    abstract val debitAmount: Double // Payment made to supplier (reduces balance)
+    abstract val debitAmount: Double // Payment made to supplier or Debit Note (reduces balance)
     abstract val creditAmount: Double // Purchase invoice (increases balance)
 
     data class PurchaseBillEntry(
@@ -344,7 +359,86 @@ sealed class SupplierLedgerEntry {
         override val debitAmount: Double = payment.amount
         override val creditAmount: Double = 0.0
     }
+
+    data class DebitNoteEntry(
+        override val id: Long,
+        override val dateMillis: Long,
+        val returnWithItems: PurchaseReturnWithItems
+    ) : SupplierLedgerEntry() {
+        override val description: String = "Debit Note / Return #${returnWithItems.returnNote.returnNo} (${returnWithItems.returnNote.reason})"
+        override val debitAmount: Double = returnWithItems.returnNote.totalAmount
+        override val creditAmount: Double = 0.0
+    }
 }
+
+@Entity(
+    tableName = "purchase_returns",
+    indices = [Index(value = ["supplierId"])]
+)
+data class PurchaseReturnEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val returnNo: String, // e.g. "DN-2026-001"
+    val purchaseId: Long = 0, // optional link to original purchase
+    val purchaseInvoiceNo: String = "",
+    val supplierId: Long,
+    val supplierName: String,
+    val dateMillis: Long = System.currentTimeMillis(),
+    val reason: String = "Defective / Damaged Material",
+    val totalAmount: Double = 0.0,
+    val notes: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "purchase_return_items",
+    foreignKeys = [
+        ForeignKey(
+            entity = PurchaseReturnEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["returnId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["returnId"])]
+)
+data class PurchaseReturnItemEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val returnId: Long = 0,
+    val slNo: Int = 1,
+    val particular: String,
+    val qty: Double = 1.0,
+    val unit: String = "Pcs",
+    val rate: Double = 0.0,
+    val amount: Double = 0.0
+) {
+    val formattedQty: String
+        get() = if (qty % 1.0 == 0.0) qty.toLong().toString() else String.format(java.util.Locale.US, "%.2f", qty).trimEnd('0').trimEnd('.')
+
+    val formattedQtyWithUnit: String
+        get() = "$formattedQty ${unit.ifBlank { "Pcs" }}"
+}
+
+data class PurchaseReturnWithItems(
+    @Embedded val returnNote: PurchaseReturnEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "returnId"
+    )
+    val items: List<PurchaseReturnItemEntity>
+)
+
+@Entity(tableName = "raw_materials")
+data class RawMaterialCatalogEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val name: String,
+    val defaultUnit: String = "Pcs",
+    val defaultRate: Double = 0.0,
+    val hsnSac: String = "4418",
+    val category: String = "General"
+)
 
 @Entity(tableName = "door_presets")
 data class DoorPresetEntity(

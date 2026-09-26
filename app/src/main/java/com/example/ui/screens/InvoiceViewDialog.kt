@@ -626,17 +626,34 @@ fun InvoiceViewDialog(
                                                 }
                                             }
                                             if (qrBitmap != null) {
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Column(
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    modifier = Modifier.padding(start = 8.dp)
+                                                ) {
+                                                    Text(
+                                                        "SCAN TO PAY",
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color(0xFF0369A1),
+                                                        letterSpacing = 0.5.sp
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
                                                     Image(
                                                         bitmap = qrBitmap.asImageBitmap(),
                                                         contentDescription = "Payment QR",
                                                         modifier = Modifier
-                                                            .size(64.dp)
+                                                            .size(72.dp)
                                                             .clip(RoundedCornerShape(6.dp))
+                                                            .border(1.dp, Color(0xFF0284C7), RoundedCornerShape(6.dp))
                                                             .background(Color.White)
-                                                            .padding(2.dp)
+                                                            .padding(3.dp)
                                                     )
-                                                    Text("Scan to Pay", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                    Text(
+                                                        "PhonePe • GPay • Paytm",
+                                                        fontSize = 7.5.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
                                                 }
                                             }
                                         }

@@ -21,9 +21,12 @@ import kotlinx.coroutines.launch
         PurchaseEntity::class,
         PurchaseItemEntity::class,
         PurchasePaymentEntity::class,
-        DoorPresetEntity::class
+        DoorPresetEntity::class,
+        PurchaseReturnEntity::class,
+        PurchaseReturnItemEntity::class,
+        RawMaterialCatalogEntity::class
     ],
-    version = 8,
+    version = 10,
     exportSchema = false
 )
 abstract class DoorDatabase : RoomDatabase() {
@@ -35,6 +38,8 @@ abstract class DoorDatabase : RoomDatabase() {
     abstract fun purchaseDao(): PurchaseDao
     abstract fun purchasePaymentDao(): PurchasePaymentDao
     abstract fun doorPresetDao(): DoorPresetDao
+    abstract fun purchaseReturnDao(): PurchaseReturnDao
+    abstract fun rawMaterialCatalogDao(): RawMaterialCatalogDao
 
     companion object {
         @Volatile
@@ -162,6 +167,89 @@ abstract class DoorDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS purchase_items_new (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "purchaseId INTEGER NOT NULL, " +
+                            "slNo INTEGER NOT NULL, " +
+                            "particular TEXT NOT NULL, " +
+                            "hsnSac TEXT NOT NULL, " +
+                            "height REAL NOT NULL, " +
+                            "width REAL NOT NULL, " +
+                            "qty REAL NOT NULL, " +
+                            "sqFt REAL NOT NULL, " +
+                            "rate REAL NOT NULL, " +
+                            "amount REAL NOT NULL, " +
+                            "unit TEXT NOT NULL DEFAULT 'Pcs', " +
+                            "FOREIGN KEY(purchaseId) REFERENCES purchases(id) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                db.execSQL(
+                    "INSERT INTO purchase_items_new (id, purchaseId, slNo, particular, hsnSac, height, width, qty, sqFt, rate, amount, unit) " +
+                            "SELECT id, purchaseId, slNo, particular, hsnSac, height, width, CAST(qty AS REAL), sqFt, rate, amount, 'Pcs' FROM purchase_items"
+                )
+                db.execSQL("DROP TABLE purchase_items")
+                db.execSQL("ALTER TABLE purchase_items_new RENAME TO purchase_items")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_purchase_items_purchaseId ON purchase_items(purchaseId)")
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add columns to purchases table
+                db.execSQL("ALTER TABLE purchases ADD COLUMN billPhotoUri TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE purchases ADD COLUMN transportName TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE purchases ADD COLUMN vehicleNo TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE purchases ADD COLUMN lrBiltyNo TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE purchases ADD COLUMN discountType TEXT NOT NULL DEFAULT 'FLAT'")
+                db.execSQL("ALTER TABLE purchases ADD COLUMN discountPercent REAL NOT NULL DEFAULT 0.0")
+
+                // Create purchase_returns table
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS purchase_returns (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "returnNo TEXT NOT NULL, " +
+                            "purchaseId INTEGER NOT NULL DEFAULT 0, " +
+                            "purchaseInvoiceNo TEXT NOT NULL DEFAULT '', " +
+                            "supplierId INTEGER NOT NULL, " +
+                            "supplierName TEXT NOT NULL, " +
+                            "dateMillis INTEGER NOT NULL, " +
+                            "reason TEXT NOT NULL DEFAULT 'Defective / Damaged Material', " +
+                            "totalAmount REAL NOT NULL DEFAULT 0.0, " +
+                            "notes TEXT NOT NULL DEFAULT '', " +
+                            "createdAt INTEGER NOT NULL)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_purchase_returns_supplierId ON purchase_returns(supplierId)")
+
+                // Create purchase_return_items table
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS purchase_return_items (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "returnId INTEGER NOT NULL, " +
+                            "slNo INTEGER NOT NULL DEFAULT 1, " +
+                            "particular TEXT NOT NULL, " +
+                            "qty REAL NOT NULL DEFAULT 1.0, " +
+                            "unit TEXT NOT NULL DEFAULT 'Pcs', " +
+                            "rate REAL NOT NULL DEFAULT 0.0, " +
+                            "amount REAL NOT NULL DEFAULT 0.0, " +
+                            "FOREIGN KEY(returnId) REFERENCES purchase_returns(id) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_purchase_return_items_returnId ON purchase_return_items(returnId)")
+
+                // Create raw_materials table
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS raw_materials (" +
+                            "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "name TEXT NOT NULL, " +
+                            "defaultUnit TEXT NOT NULL DEFAULT 'Pcs', " +
+                            "defaultRate REAL NOT NULL DEFAULT 0.0, " +
+                            "hsnSac TEXT NOT NULL DEFAULT '4418', " +
+                            "category TEXT NOT NULL DEFAULT 'General')"
+                )
+            }
+        }
+
         fun getDatabase(context: Context): DoorDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -169,7 +257,7 @@ abstract class DoorDatabase : RoomDatabase() {
                     DoorDatabase::class.java,
                     "door_billing_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
