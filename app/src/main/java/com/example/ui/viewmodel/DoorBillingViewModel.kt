@@ -29,6 +29,7 @@ import com.example.data.repository.DoorBillingRepository
 import com.example.util.DimensionCalculator
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import com.example.data.backup.AppBackupData
 import com.example.data.backup.BackupSummary
 import com.example.data.backup.DriveFileInfo
@@ -84,6 +85,13 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _lastBackupType = MutableStateFlow(prefs.getString("last_backup_type", "") ?: "")
     val lastBackupType: StateFlow<String> = _lastBackupType.asStateFlow()
+
+    private val _googleSignInErrorInfo = MutableStateFlow<String?>(null)
+    val googleSignInErrorInfo: StateFlow<String?> = _googleSignInErrorInfo.asStateFlow()
+
+    fun clearGoogleSignInErrorInfo() {
+        _googleSignInErrorInfo.value = null
+    }
 
     init {
         repository = DoorBillingRepository(
@@ -1381,15 +1389,26 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun onGoogleSignInResult(data: Intent?) {
-        val account = googleDriveManager.handleSignInResult(data)
-        _googleAccount.value = account
-        if (account != null) {
-            showMessage("Google Drive connected: ${account.email}")
+    fun onGoogleSignInResult(resultCode: Int, data: Intent?) {
+        val outcome = googleDriveManager.handleSignInResultDetailed(resultCode, data)
+        _googleAccount.value = outcome.account
+        if (outcome.account != null) {
+            _googleSignInErrorInfo.value = null
+            showMessage("Google Drive connected: ${outcome.account.email}")
             checkDriveBackup()
         } else {
-            showMessage("Google Sign-In was cancelled")
+            if (outcome.isCancelled) {
+                showMessage("Google Sign-In was cancelled")
+            } else {
+                val err = outcome.errorMessage ?: "Google Sign-In could not be completed"
+                _googleSignInErrorInfo.value = err
+                showMessage(err)
+            }
         }
+    }
+
+    fun onGoogleSignInResult(data: Intent?) {
+        onGoogleSignInResult(android.app.Activity.RESULT_OK, data)
     }
 
     fun signOutGoogleDrive() {
@@ -1530,6 +1549,52 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             } catch (e: Exception) {
                 _isBackupOperating.value = false
                 val msg = "Error restoring data: ${e.localizedMessage ?: "Invalid backup file"}"
+                showMessage(msg)
+                withContext(Dispatchers.Main) {
+                    onResult(false, msg)
+                }
+            }
+        }
+    }
+
+    fun recordBackupSuccess(type: String) {
+        val now = System.currentTimeMillis()
+        _lastBackupTime.value = now
+        _lastBackupType.value = type
+        prefs.edit()
+            .putLong("last_backup_time", now)
+            .putString("last_backup_type", type)
+            .apply()
+    }
+
+    fun saveBackupToUri(uri: Uri, context: Context, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        _isBackupOperating.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val json = getExportBackupJson()
+                val outputStream = context.contentResolver.openOutputStream(uri)
+                    ?: throw Exception("Could not open destination for writing")
+                outputStream.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
+                val now = System.currentTimeMillis()
+                _lastBackupTime.value = now
+                _lastBackupType.value = "Storage / Drive File"
+                prefs.edit()
+                    .putLong("last_backup_time", now)
+                    .putString("last_backup_type", "Storage / Drive File")
+                    .apply()
+                _isBackupOperating.value = false
+                val backupData = AppBackupData.fromJsonString(json)
+                val msg = "Backup saved successfully! (${backupData.bills.size} Bills, ${backupData.customers.size} Customers)"
+                showMessage(msg)
+                withContext(Dispatchers.Main) {
+                    onResult(true, msg)
+                }
+            } catch (e: Exception) {
+                _isBackupOperating.value = false
+                val msg = "Failed to save backup: ${e.localizedMessage ?: "Unknown error"}"
                 showMessage(msg)
                 withContext(Dispatchers.Main) {
                     onResult(false, msg)

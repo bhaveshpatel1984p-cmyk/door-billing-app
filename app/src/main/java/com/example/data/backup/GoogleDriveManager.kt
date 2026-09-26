@@ -26,6 +26,13 @@ data class DriveFileInfo(
     val modifiedTime: String
 )
 
+data class GoogleSignInOutcome(
+    val account: GoogleSignInAccount? = null,
+    val isCancelled: Boolean = false,
+    val statusCode: Int? = null,
+    val errorMessage: String? = null
+)
+
 class GoogleDriveManager(private val context: Context) {
 
     private val httpClient = OkHttpClient.Builder()
@@ -60,6 +67,59 @@ class GoogleDriveManager(private val context: Context) {
             account
         } else {
             null
+        }
+    }
+
+    fun handleSignInResultDetailed(resultCode: Int, data: Intent?): GoogleSignInOutcome {
+        if (data == null) {
+            return GoogleSignInOutcome(
+                isCancelled = true,
+                errorMessage = "Google Sign-In dialog closed"
+            )
+        }
+        return try {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(data)
+            if (task.isSuccessful) {
+                GoogleSignInOutcome(account = task.result)
+            } else {
+                val ex = task.exception
+                val apiEx = ex as? ApiException
+                val code = apiEx?.statusCode ?: -1
+                val isCancelled = (code == 12501)
+                val errorMsg = when (code) {
+                    12501 -> "Google Sign-In was cancelled."
+                    10 -> "Direct Google Drive API sync requires Google Cloud Console registration (Code 10). Use 'Save to Phone/Drive' or 'Share Backup' below for instant 1-tap backup without any setup!"
+                    12500 -> "Google Sign-In failed (Code 12500). Please check your Google account on this device or use 'Save to Phone/Drive' below."
+                    7 -> "Network connection error. Please check your internet connection."
+                    4 -> "Google Sign-In required. Please sign into a Google account in phone Settings."
+                    else -> apiEx?.localizedMessage ?: ex?.localizedMessage ?: "Google Sign-In status code: $code"
+                }
+                GoogleSignInOutcome(
+                    isCancelled = isCancelled,
+                    statusCode = code,
+                    errorMessage = errorMsg
+                )
+            }
+        } catch (e: ApiException) {
+            val code = e.statusCode
+            val isCancelled = (code == 12501)
+            val errorMsg = when (code) {
+                12501 -> "Google Sign-In was cancelled."
+                10 -> "Direct Google Drive API sync requires Google Cloud Console registration (Code 10). Use 'Save to Phone/Drive' or 'Share Backup' below for instant 1-tap backup without any setup!"
+                12500 -> "Google Sign-In failed (Code 12500). Use 'Save to Phone/Drive' below."
+                7 -> "Network error during Google Sign-In."
+                else -> e.localizedMessage ?: "Sign-in error code: $code"
+            }
+            GoogleSignInOutcome(
+                isCancelled = isCancelled,
+                statusCode = code,
+                errorMessage = errorMsg
+            )
+        } catch (e: Exception) {
+            GoogleSignInOutcome(
+                isCancelled = false,
+                errorMessage = e.localizedMessage ?: "Unexpected error during Google Sign-In"
+            )
         }
     }
 
