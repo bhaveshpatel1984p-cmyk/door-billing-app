@@ -106,6 +106,8 @@ fun CustomerLedgerScreen(
     var showLedgerShareOptions by remember { mutableStateOf(false) }
     var selectedBillForShare by remember { mutableStateOf<BillWithItems?>(null) }
     var selectedBillForViewModal by remember { mutableStateOf<BillWithItems?>(null) }
+    var showEditOpeningBalanceDialog by remember { mutableStateOf(false) }
+    var editOpeningBalanceInput by remember { mutableStateOf("") }
 
     if (customer == null) {
         viewModel.navigateTo(AppScreen.CUSTOMER_BALANCE)
@@ -113,7 +115,9 @@ fun CustomerLedgerScreen(
     }
 
     val cust = customer!!
-    val totalBilled = ledgerEntries.filterIsInstance<LedgerEntry.BillEntry>().sumOf { it.grandTotal }
+    val openingBalanceAmount = ledgerEntries.filterIsInstance<LedgerEntry.OpeningBalanceEntry>().sumOf { it.openingAmount }
+    val totalInvoicesBilled = ledgerEntries.filterIsInstance<LedgerEntry.BillEntry>().sumOf { it.grandTotal }
+    val totalBilled = openingBalanceAmount + totalInvoicesBilled
     val totalPaid = ledgerEntries.filterIsInstance<LedgerEntry.PaymentRecord>().sumOf { it.payment.amount }
     val balance = totalBilled - totalPaid
 
@@ -214,12 +218,28 @@ fun CustomerLedgerScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
+                            if (openingBalanceAmount > 0) {
+                                Column(
+                                    modifier = Modifier.clickable {
+                                        editOpeningBalanceInput = DimensionCalculator.formatDimension(openingBalanceAmount)
+                                        showEditOpeningBalanceDialog = true
+                                    }
+                                ) {
+                                    Text("Opening Due ✎", fontSize = 11.sp, color = Color(0xFFC2410C), fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        DimensionCalculator.formatCurrency(openingBalanceAmount),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFFC2410C)
+                                    )
+                                }
+                            }
                             Column {
-                                Text("Total Invoices", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(if (openingBalanceAmount > 0) "Invoices" else "Total Invoices", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    DimensionCalculator.formatCurrency(totalBilled),
+                                    DimensionCalculator.formatCurrency(totalInvoicesBilled),
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
+                                    fontSize = 14.sp,
                                     color = Color(0xFF0369A1)
                                 )
                             }
@@ -228,7 +248,7 @@ fun CustomerLedgerScreen(
                                 Text(
                                     DimensionCalculator.formatCurrency(totalPaid),
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
+                                    fontSize = 14.sp,
                                     color = Color(0xFF16A34A)
                                 )
                             }
@@ -319,14 +339,31 @@ fun CustomerLedgerScreen(
 
             // Transaction History Header
             item {
-                Text(
-                    text = "TRANSACTION ENTRIES (${ledgerEntries.size})",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TRANSACTION ENTRIES (${ledgerEntries.size})",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     )
-                )
+                    if (openingBalanceAmount <= 0.0) {
+                        TextButton(
+                            onClick = {
+                                editOpeningBalanceInput = ""
+                                showEditOpeningBalanceDialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("+ Set Opening Due", fontSize = 11.5.sp, color = Color(0xFFC2410C), fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
             }
 
             if (ledgerEntries.isEmpty()) {
@@ -346,6 +383,89 @@ fun CustomerLedgerScreen(
             } else {
                 items(ledgerEntries) { entry ->
                     when (entry) {
+                        is LedgerEntry.OpeningBalanceEntry -> {
+                            ElevatedCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = Color(0xFFFFEDD5),
+                                                modifier = Modifier.size(36.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text("⚖️", fontSize = 18.sp)
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.width(10.dp))
+
+                                            Column {
+                                                Text(
+                                                    text = "Opening Balance / Previous Due",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.5.sp,
+                                                    color = Color(0xFFC2410C)
+                                                )
+                                                Text(
+                                                    text = "${DimensionCalculator.formatDate(entry.dateMillis)} • Prior Outstanding Due",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(
+                                                text = "+ " + DimensionCalculator.formatCurrency(entry.debitAmount),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = Color(0xFFC2410C)
+                                            )
+                                            Text(
+                                                text = "Prior Due (Debit)",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = {
+                                                editOpeningBalanceInput = DimensionCalculator.formatDimension(entry.openingAmount)
+                                                showEditOpeningBalanceDialog = true
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(30.dp)
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color(0xFFC2410C))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Edit Opening Balance", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFC2410C))
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         is LedgerEntry.BillEntry -> {
                             ElevatedCard(
                                 modifier = Modifier
@@ -393,6 +513,14 @@ fun CustomerLedgerScreen(
                                                 fontSize = 11.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
+                                            if (entry.billWithItems.bill.previousBalance > 0) {
+                                                Text(
+                                                    text = "➕ Bill included: ${DimensionCalculator.formatCurrency(entry.billWithItems.bill.previousBalance)} old due",
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color(0xFFC2410C)
+                                                )
+                                            }
                                         }
                                     }
 
@@ -1086,6 +1214,49 @@ fun CustomerLedgerScreen(
             previousBalance = Math.max(0.0, priorBalance),
             remainingBalance = Math.max(0.0, balance),
             onDismiss = { selectedPaymentForReceipt = null }
+        )
+    }
+
+    // Edit Customer Opening / Prior Due Balance Dialog
+    if (showEditOpeningBalanceDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditOpeningBalanceDialog = false },
+            title = { Text("Customer Opening / Prior Due", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Set the opening outstanding balance for ${cust.displayName}. This amount will appear in the customer ledger and be included in the total outstanding due balance.",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = editOpeningBalanceInput,
+                        onValueChange = { editOpeningBalanceInput = it },
+                        label = { Text("Opening Due Balance (₹)") },
+                        placeholder = { Text("0.00") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val amt = editOpeningBalanceInput.toDoubleOrNull() ?: 0.0
+                        viewModel.updateCustomerOpeningBalance(cust.id, amt)
+                        showEditOpeningBalanceDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC2410C))
+                ) {
+                    Text("Apply & Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditOpeningBalanceDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }

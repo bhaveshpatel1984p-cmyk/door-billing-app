@@ -76,6 +76,7 @@ fun CreateCustomerScreen(
     val mobile by viewModel.customerMobileInput.collectAsStateWithLifecycle()
     val address by viewModel.customerAddressInput.collectAsStateWithLifecycle()
     val gstNo by viewModel.customerGstInput.collectAsStateWithLifecycle()
+    val openingBalanceStr by viewModel.customerOpeningBalanceInput.collectAsStateWithLifecycle()
     val editingId by viewModel.editingCustomerId.collectAsStateWithLifecycle()
     val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
 
@@ -232,11 +233,28 @@ fun CreateCustomerScreen(
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
                                 capitalization = KeyboardCapitalization.Characters,
-                                imeAction = ImeAction.Done
+                                imeAction = ImeAction.Next
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("customer_gst_input")
+                        )
+
+                        // 5) Opening Due Balance (Optional)
+                        OutlinedTextField(
+                            value = openingBalanceStr,
+                            onValueChange = { viewModel.customerOpeningBalanceInput.value = it },
+                            label = { Text("Opening Due Balance (₹) (Optional)") },
+                            placeholder = { Text("0.00 (Past due balance if any)") },
+                            leadingIcon = { Text("₹", fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp, end = 4.dp), color = Color(0xFFC2410C)) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Done
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("customer_opening_balance_input")
                         )
 
                         Spacer(modifier = Modifier.height(4.dp))

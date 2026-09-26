@@ -106,6 +106,12 @@ interface BillDao {
     @Query("SELECT * FROM bills")
     suspend fun getAllBillsDirect(): List<BillEntity>
 
+    @Query("SELECT * FROM bills WHERE customerId = :customerId ORDER BY dateMillis ASC, id ASC")
+    suspend fun getBillsByCustomerDirect(customerId: Long): List<BillEntity>
+
+    @Query("SELECT * FROM bills WHERE customerId = :customerId AND id != :excludeBillId ORDER BY dateMillis ASC, id ASC")
+    suspend fun getBillsByCustomerDirectExcluding(customerId: Long, excludeBillId: Long): List<BillEntity>
+
     @Query("SELECT * FROM bill_items")
     suspend fun getAllBillItemsDirect(): List<BillItemEntity>
 

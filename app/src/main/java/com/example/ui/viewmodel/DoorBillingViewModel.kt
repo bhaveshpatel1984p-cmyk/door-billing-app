@@ -210,6 +210,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val customerMobileInput = MutableStateFlow("")
     val customerAddressInput = MutableStateFlow("")
     val customerGstInput = MutableStateFlow("")
+    val customerOpeningBalanceInput = MutableStateFlow("")
     val editingCustomerId = MutableStateFlow<Long?>(null)
 
     fun prepareNewCustomer() {
@@ -218,6 +219,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         customerMobileInput.value = ""
         customerAddressInput.value = ""
         customerGstInput.value = ""
+        customerOpeningBalanceInput.value = ""
         editingCustomerId.value = null
     }
 
@@ -227,6 +229,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         customerMobileInput.value = customer.mobile
         customerAddressInput.value = customer.address
         customerGstInput.value = customer.gstNo
+        customerOpeningBalanceInput.value = if (customer.openingBalance > 0) DimensionCalculator.formatDimension(customer.openingBalance) else ""
         editingCustomerId.value = customer.id
     }
 
@@ -248,7 +251,8 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
                 name = finalContactName,
                 mobile = customerMobileInput.value.trim(),
                 address = customerAddressInput.value.trim(),
-                gstNo = customerGstInput.value.trim().uppercase()
+                gstNo = customerGstInput.value.trim().uppercase(),
+                openingBalance = customerOpeningBalanceInput.value.toDoubleOrNull() ?: 0.0
             )
             val newId = repository.saveCustomer(customer)
             val savedCustomer = customer.copy(id = if (customer.id == 0L) newId else customer.id)
@@ -664,6 +668,19 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             val finalBill = billEntity.copy(id = savedBillId)
             val finalBillWithItems = BillWithItems(finalBill, items.map { it.copy(billId = savedBillId) })
 
+            // Synchronize entered previous balance with customer's ledger/opening balance
+            if (includePreviousBalanceDraft.value && prevBalance > 0.0) {
+                val priorDue = repository.getCustomerDueBalance(customer.id, excludeBillId = savedBillId)
+                val delta = prevBalance - priorDue
+                if (Math.abs(delta) > 0.01) {
+                    val updatedCustomer = customer.copy(
+                        openingBalance = maxOf(0.0, customer.openingBalance + delta)
+                    )
+                    repository.saveCustomer(updatedCustomer)
+                    selectedCustomerDraft.value = updatedCustomer
+                }
+            }
+
             // If an initial paid amount was provided upon bill creation and it's a new bill, record it as payment
             if (billIdDraft.value == 0L && paidAmountDraft.value > 0) {
                 repository.addPayment(
@@ -709,6 +726,17 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
         navigateTo(AppScreen.CUSTOMER_LEDGER)
+    }
+
+    fun updateCustomerOpeningBalance(customerId: Long, openingBalance: Double) {
+        viewModelScope.launch {
+            repository.updateCustomerOpeningBalance(customerId, openingBalance)
+            val updated = repository.getCustomerByIdDirect(customerId)
+            if (updated != null && selectedLedgerCustomer.value?.id == customerId) {
+                selectedLedgerCustomer.value = updated
+            }
+            showMessage("Customer opening balance updated to ₹${DimensionCalculator.formatDimension(openingBalance)}")
+        }
     }
 
     fun recordCustomerPayment(

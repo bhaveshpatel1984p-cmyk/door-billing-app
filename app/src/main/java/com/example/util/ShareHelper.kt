@@ -388,8 +388,16 @@ object ShareHelper {
             }
         }
 
+        val openingEntry = ledgerEntries.filterIsInstance<LedgerEntry.OpeningBalanceEntry>().firstOrNull()
+        val openBalAmt = openingEntry?.openingAmount ?: 0.0
+
         sb.appendLine("━━━━━━━━━━━━━━━━━━━")
-        sb.appendLine("📈 *Total Billed:* ₹${String.format(Locale.US, "%.2f", totalBilled)}")
+        if (openBalAmt > 0) {
+            sb.appendLine("⚖️ *Opening Due Balance:* ₹${String.format(Locale.US, "%.2f", openBalAmt)}")
+            sb.appendLine("📈 *Invoices Billed:* ₹${String.format(Locale.US, "%.2f", totalBilled - openBalAmt)}")
+        } else {
+            sb.appendLine("📈 *Total Billed:* ₹${String.format(Locale.US, "%.2f", totalBilled)}")
+        }
         sb.appendLine("💳 *Total Received:* ₹${String.format(Locale.US, "%.2f", totalPaid)}")
         sb.appendLine(
             "⚠️ *CURRENT BALANCE DUE:* *₹${String.format(Locale.US, "%.2f", balance)}*"

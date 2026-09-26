@@ -912,13 +912,17 @@ object PdfInvoiceGenerator {
         ledgerEntries.forEachIndexed { index, entry ->
             runningBal += (entry.debitAmount - entry.creditAmount)
 
-            if (index % 2 == 1) {
+            val isOpening = entry is LedgerEntry.OpeningBalanceEntry
+            if (isOpening) {
+                fillPaint.color = Color.parseColor("#FFF7ED")
+                canvas.drawRect(margin, currentY, colEnd, currentY + rowHeight, fillPaint)
+            } else if (index % 2 == 1) {
                 fillPaint.color = Color.parseColor("#F8FAFC")
                 canvas.drawRect(margin, currentY, colEnd, currentY + rowHeight, fillPaint)
             }
 
-            textPaint.typeface = Typeface.DEFAULT
-            textPaint.color = Color.parseColor("#334155")
+            textPaint.typeface = if (isOpening) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
+            textPaint.color = if (isOpening) Color.parseColor("#C2410C") else Color.parseColor("#334155")
             canvas.drawText(DimensionCalculator.formatDate(entry.dateMillis), cDate, currentY + 11.5f, textPaint)
 
             val shortDesc = if (entry.description.length > 40) entry.description.take(38) + ".." else entry.description
@@ -926,7 +930,7 @@ object PdfInvoiceGenerator {
 
             if (entry.debitAmount > 0) {
                 textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textPaint.color = Color.parseColor("#0369A1")
+                textPaint.color = if (isOpening) Color.parseColor("#C2410C") else Color.parseColor("#0369A1")
                 canvas.drawText(String.format(Locale.US, "%.2f", entry.debitAmount), cDebit, currentY + 11.5f, textPaint)
             } else {
                 textPaint.color = Color.parseColor("#94A3B8")

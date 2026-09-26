@@ -16,6 +16,7 @@ data class CustomerEntity(
     val mobile: String = "",
     val address: String = "",
     val gstNo: String = "",
+    val openingBalance: Double = 0.0,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     val displayName: String
@@ -173,7 +174,8 @@ data class CustomerBalanceSummary(
     val balance: Double, // totalBilled - totalPaid
     val billCount: Int,
     val paymentCount: Int,
-    val lastTransactionDate: Long
+    val lastTransactionDate: Long,
+    val openingBalance: Double = 0.0
 )
 
 // Ledger entry item for a customer
@@ -181,8 +183,19 @@ sealed class LedgerEntry {
     abstract val id: Long
     abstract val dateMillis: Long
     abstract val description: String
-    abstract val debitAmount: Double // Bill amount (increases balance)
+    abstract val debitAmount: Double // Bill amount or opening balance (increases balance)
     abstract val creditAmount: Double // Payment amount (reduces balance)
+
+    data class OpeningBalanceEntry(
+        override val id: Long = -1L,
+        override val dateMillis: Long,
+        val openingAmount: Double,
+        val customerName: String = ""
+    ) : LedgerEntry() {
+        override val description: String = "Opening Balance / Previous Due Balance"
+        override val debitAmount: Double = openingAmount
+        override val creditAmount: Double = 0.0
+    }
 
     data class BillEntry(
         override val id: Long,

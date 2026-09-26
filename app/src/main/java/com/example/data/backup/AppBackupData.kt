@@ -77,6 +77,7 @@ data class AppBackupData(
             o.put("mobile", c.mobile)
             o.put("address", c.address)
             o.put("gstNo", c.gstNo)
+            o.put("openingBalance", c.openingBalance)
             o.put("createdAt", c.createdAt)
             custArray.put(o)
         }
@@ -285,6 +286,7 @@ data class AppBackupData(
                             mobile = o.optString("mobile", ""),
                             address = o.optString("address", ""),
                             gstNo = o.optString("gstNo", ""),
+                            openingBalance = o.optDouble("openingBalance", 0.0),
                             createdAt = o.optLong("createdAt", System.currentTimeMillis())
                         )
                     )

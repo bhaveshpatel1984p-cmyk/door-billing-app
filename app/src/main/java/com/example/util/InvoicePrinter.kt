@@ -459,11 +459,14 @@ object InvoicePrinter {
             runningBal += (entry.debitAmount - entry.creditAmount)
             val debitStr = if (entry.debitAmount > 0) "₹${String.format(java.util.Locale.US, "%.2f", entry.debitAmount)}" else "-"
             val creditStr = if (entry.creditAmount > 0) "₹${String.format(java.util.Locale.US, "%.2f", entry.creditAmount)}" else "-"
+            val isOpening = entry is LedgerEntry.OpeningBalanceEntry
+            val rowBg = if (isOpening) "background-color:#fff7ed;" else ""
+            val descColor = if (isOpening) "color:#c2410c; font-weight:bold;" else "font-weight:500;"
             """
-            <tr>
+            <tr style="$rowBg">
                 <td style="text-align:center; padding:6px; border:1px solid #ccc;">${DimensionCalculator.formatDate(entry.dateMillis)}</td>
-                <td style="padding:6px; border:1px solid #ccc; font-weight:500;">${entry.description}</td>
-                <td style="text-align:right; padding:6px; border:1px solid #ccc; color:#0369A1; font-weight:bold;">$debitStr</td>
+                <td style="padding:6px; border:1px solid #ccc; $descColor">${if (isOpening) "⚖️ " else ""}${entry.description}</td>
+                <td style="text-align:right; padding:6px; border:1px solid #ccc; color:${if (isOpening) "#c2410c" else "#0369A1"}; font-weight:bold;">$debitStr</td>
                 <td style="text-align:right; padding:6px; border:1px solid #ccc; color:#16a34a; font-weight:bold;">$creditStr</td>
                 <td style="text-align:right; padding:6px; border:1px solid #ccc; font-weight:bold; background-color:#f8fafc;">₹${String.format(java.util.Locale.US, "%.2f", runningBal)}</td>
             </tr>
@@ -479,6 +482,9 @@ object InvoicePrinter {
             </div>
             """.trimIndent()
         } else ""
+
+        val openingEntry = ledgerEntries.filterIsInstance<LedgerEntry.OpeningBalanceEntry>().firstOrNull()
+        val openBalAmt = openingEntry?.openingAmount ?: 0.0
 
         return """
         <!DOCTYPE html>
@@ -544,7 +550,8 @@ object InvoicePrinter {
                 </table>
 
                 <div class="summary-box">
-                    <div><strong>Total Billed:</strong> ₹${String.format(java.util.Locale.US, "%.2f", totalBilled)}</div>
+                    ${if (openBalAmt > 0) "<div><strong>Opening Due:</strong> ₹${String.format(java.util.Locale.US, "%.2f", openBalAmt)}</div>" else ""}
+                    <div><strong>${if (openBalAmt > 0) "Invoices Billed:" else "Total Billed:"}</strong> ₹${String.format(java.util.Locale.US, "%.2f", totalBilled - openBalAmt)}</div>
                     <div><strong>Total Paid:</strong> ₹${String.format(java.util.Locale.US, "%.2f", totalPaid)}</div>
                     <div style="color:${if (balance > 0) "#dc2626" else "#16a34a"}; font-weight:bold; font-size:13px;">
                         <strong>Net Due Balance:</strong> ₹${String.format(java.util.Locale.US, "%.2f", balance)}

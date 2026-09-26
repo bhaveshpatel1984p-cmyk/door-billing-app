@@ -137,6 +137,7 @@ fun NewEntryScreen(
     var quickCustomerMobile by remember { mutableStateOf("") }
     var quickCustomerAddress by remember { mutableStateOf("") }
     var quickCustomerGst by remember { mutableStateOf("") }
+    var quickCustomerOpeningBalance by remember { mutableStateOf("") }
     var billSavedShareTarget by remember { mutableStateOf<BillWithItems?>(null) }
     val isQuotation by viewModel.isQuotationDraft.collectAsStateWithLifecycle()
     val allDoorPresets by viewModel.allDoorPresets.collectAsStateWithLifecycle()
@@ -1407,6 +1408,15 @@ fun NewEntryScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    OutlinedTextField(
+                        value = quickCustomerOpeningBalance,
+                        onValueChange = { quickCustomerOpeningBalance = it },
+                        label = { Text("Opening Due Balance (₹) (Optional)") },
+                        placeholder = { Text("0.00") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             },
             confirmButton = {
@@ -1418,6 +1428,7 @@ fun NewEntryScreen(
                             viewModel.customerMobileInput.value = quickCustomerMobile
                             viewModel.customerAddressInput.value = quickCustomerAddress
                             viewModel.customerGstInput.value = quickCustomerGst
+                            viewModel.customerOpeningBalanceInput.value = quickCustomerOpeningBalance
                             viewModel.saveCustomer { savedCust ->
                                 viewModel.selectCustomerForBill(savedCust)
                                 showQuickCustomerDialog = false
@@ -1426,6 +1437,7 @@ fun NewEntryScreen(
                                 quickCustomerMobile = ""
                                 quickCustomerAddress = ""
                                 quickCustomerGst = ""
+                                quickCustomerOpeningBalance = ""
                             }
                         }
                     }
