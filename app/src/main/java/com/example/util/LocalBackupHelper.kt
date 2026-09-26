@@ -50,6 +50,28 @@ object LocalBackupHelper {
         }
     }
 
+    fun createDriveUploadIntent(context: Context, file: File): Intent {
+        val uri: Uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file
+        )
+
+        val driveIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "Nirmal Door Billing Backup - ${file.name}")
+            setPackage("com.google.android.apps.docs")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        return if (context.packageManager.queryIntentActivities(driveIntent, 0).isNotEmpty()) {
+            driveIntent
+        } else {
+            Intent.createChooser(shareBackupFile(context, file), "Save Backup to Google Drive / Share via")
+        }
+    }
+
     fun readBackupFromUri(context: Context, uri: Uri): Result<String> {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri)

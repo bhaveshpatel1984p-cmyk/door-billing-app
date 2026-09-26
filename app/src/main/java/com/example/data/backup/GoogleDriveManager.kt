@@ -3,6 +3,7 @@ package com.example.data.backup
 import android.content.Context
 import android.content.Intent
 import com.google.android.gms.auth.GoogleAuthUtil
+import com.google.android.gms.auth.UserRecoverableAuthException
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
@@ -44,11 +45,13 @@ class GoogleDriveManager(private val context: Context) {
     companion object {
         const val DRIVE_FILE_NAME = "door_billing_backup.json"
         private const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
+        const val OAUTH_CLIENT_ID = "509121070165-fdlbslfnjml82j7f9bhhdacrg0qk7uv1.apps.googleusercontent.com"
     }
 
     private val gso: GoogleSignInOptions by lazy {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
+            .requestIdToken(OAUTH_CLIENT_ID)
             .requestScopes(Scope(DRIVE_SCOPE))
             .build()
     }
@@ -142,6 +145,8 @@ class GoogleDriveManager(private val context: Context) {
         }
     }
 
+    var lastRecoverableIntent: Intent? = null
+
     suspend fun fetchOAuthToken(account: GoogleSignInAccount): String? = withContext(Dispatchers.IO) {
         try {
             val androidAccount = account.account ?: android.accounts.Account(account.email ?: "", "com.google")
@@ -150,6 +155,9 @@ class GoogleDriveManager(private val context: Context) {
                 androidAccount,
                 "oauth2:$DRIVE_SCOPE"
             )
+        } catch (e: UserRecoverableAuthException) {
+            lastRecoverableIntent = e.intent
+            null
         } catch (e: Exception) {
             null
         }

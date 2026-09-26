@@ -98,7 +98,6 @@ fun BackupSyncScreen(
     val isOperating by viewModel.isBackupOperating.collectAsStateWithLifecycle()
     val lastBackupTime by viewModel.lastBackupTime.collectAsStateWithLifecycle()
     val lastBackupType by viewModel.lastBackupType.collectAsStateWithLifecycle()
-    val googleSignInErrorInfo by viewModel.googleSignInErrorInfo.collectAsStateWithLifecycle()
 
     val bills by viewModel.allBills.collectAsStateWithLifecycle()
     val customers by viewModel.allCustomers.collectAsStateWithLifecycle()
@@ -344,44 +343,135 @@ fun BackupSyncScreen(
                         )
 
                         if (googleAccount == null) {
+                            // Primary 1-Tap Google Drive Backup Button
                             Button(
                                 onClick = {
-                                    val intent = viewModel.googleDriveManager.getSignInIntent()
-                                    googleSignInLauncher.launch(intent)
+                                    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                                    saveBackupFileLauncher.launch("door_billing_backup_$timeStamp.json")
                                 },
+                                enabled = !isOperating,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("backup_to_drive_button"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
+                            ) {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "Backup to Google Drive",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = Color.White
+                                )
+                            }
+
+                            // Primary 1-Tap Google Drive Restore Button
+                            OutlinedButton(
+                                onClick = {
+                                    pickBackupFileLauncher.launch("*/*")
+                                },
+                                enabled = !isOperating,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(48.dp)
-                                    .testTag("connect_google_drive_button"),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                    .testTag("restore_from_drive_button"),
+                                shape = RoundedCornerShape(12.dp)
                             ) {
-                                Icon(Icons.Default.AccountCircle, contentDescription = null)
+                                Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF1E88E5))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Connect Google Drive Account", fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Restore from Google Drive",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
                             }
 
+                            // Secondary Quick Actions: Drive App Upload & WhatsApp Transfer
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            val json = viewModel.getExportBackupJson()
+                                            val file = LocalBackupHelper.createBackupFile(context, json)
+                                            val intent = LocalBackupHelper.createDriveUploadIntent(context, file)
+                                            context.startActivity(intent)
+                                        }
+                                    },
+                                    enabled = !isOperating,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                        .testTag("upload_via_drive_app_button"),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Drive App", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            val json = viewModel.getExportBackupJson()
+                                            val file = LocalBackupHelper.createBackupFile(context, json)
+                                            val intent = LocalBackupHelper.shareBackupFile(context, file)
+                                            val chooser = Intent.createChooser(intent, "Share Data Backup via").apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(chooser)
+                                        }
+                                    },
+                                    enabled = !isOperating,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                        .testTag("export_backup_file_button"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("WhatsApp", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            // 2-Phone Sync Guide Box
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF0FDF4),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(
-                                        Icons.Default.Info,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.CheckCircle,
+                                            contentDescription = null,
+                                            tint = Color(0xFF16A34A),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Doosre Phone me Sync Kaise Karein:",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF166534)
+                                        )
+                                    }
                                     Text(
-                                        text = "Agar Google Sign-In karne par 'Cancelled' ya setup error aaye to fikar na karein — neeche 'Save to Phone / Google Drive' se direct 1-tap backup save kar sakte hain!",
+                                        text = "1. Is phone me 'Backup to Google Drive' dabayein aur apna Drive folder chunein.\n" +
+                                                "2. Doosre phone me ye app kholein aur 'Restore from Google Drive' dabakar vahi backup file select karein.\n" +
+                                                "3. Aapke sabhi bills, customers aur balances turant sync ho jayenge!",
                                         fontSize = 11.sp,
-                                        lineHeight = 15.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        lineHeight = 16.sp,
+                                        color = Color(0xFF15803D)
                                     )
                                 }
                             }
@@ -784,85 +874,6 @@ fun BackupSyncScreen(
                     enabled = !isOperating
                 ) {
                     Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // Google Sign-In Error / Help Dialog
-    if (googleSignInErrorInfo != null) {
-        AlertDialog(
-            onDismissRequest = { viewModel.clearGoogleSignInErrorInfo() },
-            icon = {
-                Icon(
-                    Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(32.dp)
-                )
-            },
-            title = {
-                Text(
-                    text = "Google Drive Sync Notice",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Direct Google Drive background sync requires Google Cloud Console verification for this app package.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-
-                    Surface(
-                        color = Color(0xFFF0FDF4),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "✅ 100% Working 1-Tap Solution:",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = Color(0xFF166534)
-                            )
-                            Text(
-                                text = "Neeche diye gaye 'Save to Drive / Phone' button par tap karein. Isse bina kisi error ke aapka poora database (Bills, Customers, Balances) turant aapke Google Drive ya Phone storage me save ho jayega!",
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp,
-                                color = Color(0xFF15803D)
-                            )
-                        }
-                    }
-
-                    googleSignInErrorInfo?.let { info ->
-                        Text(
-                            text = info,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.clearGoogleSignInErrorInfo()
-                        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                        saveBackupFileLauncher.launch("door_billing_backup_$timeStamp.json")
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text("Save to Drive / Phone Now", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.clearGoogleSignInErrorInfo() }) {
-                    Text("Close")
                 }
             }
         )
