@@ -38,16 +38,35 @@ import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
 import kotlinx.coroutines.flow.collectLatest
 
+// Door billing management application main entry point
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
+    bringToFrontSafely()
     setContent {
       MyApplicationTheme {
         val billingViewModel: DoorBillingViewModel = viewModel()
         DoorBillingMainApp(viewModel = billingViewModel)
       }
     }
+  }
+
+  override fun onStart() {
+    super.onStart()
+    bringToFrontSafely()
+  }
+
+  override fun onResume() {
+    super.onResume()
+    bringToFrontSafely()
+  }
+
+  private fun bringToFrontSafely() {
+    try {
+      val am = getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+      am?.moveTaskToFront(taskId, android.app.ActivityManager.MOVE_TASK_WITH_HOME)
+    } catch (_: Exception) {}
   }
 }
 

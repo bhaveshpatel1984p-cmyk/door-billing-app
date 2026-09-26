@@ -61,19 +61,32 @@ object QrCodeHelper {
     }
 
     /**
-     * Checks whether the company profile has any QR code configured (uploaded image or UPI ID).
+     * Resolves an effective UPI ID. Prioritizes user's custom UPI ID,
+     * falls back to standard NPCI account-based UPI (A/c@IFSC.ifsc.npci) or mobile.
+     */
+    fun resolveEffectiveUpiId(company: CompanyProfileEntity): String {
+        if (company.upiId.isNotBlank()) return company.upiId.trim()
+        if (company.accountNo.isNotBlank() && company.ifscCode.isNotBlank()) {
+            return "${company.accountNo.trim()}@${company.ifscCode.trim()}.ifsc.npci"
+        }
+        if (company.mobile.isNotBlank()) {
+            return "${company.mobile.trim()}@upi"
+        }
+        return "nirmaldoor@upi"
+    }
+
+    /**
+     * Checks whether the company profile has any QR code configured.
+     * Always returns true because bills will either use custom uploaded QR image
+     * or auto-generate a valid UPI QR code from UPI ID / Bank Account / Mobile.
      */
     fun hasQrCode(company: CompanyProfileEntity): Boolean {
-        if (!company.qrCodeUri.isNullOrBlank()) {
-            val file = File(company.qrCodeUri)
-            if (file.exists() && file.length() > 0) return true
-        }
-        return company.upiId.isNotBlank()
+        return true
     }
 
     /**
      * Retrieves or generates a Bitmap representation of the company's payment QR code.
-     * Prioritizes the uploaded QR image if present; otherwise generates a UPI QR from upiId.
+     * Prioritizes the uploaded QR image if present; otherwise generates a UPI QR from UPI ID / Bank details.
      */
     fun getPaymentQrBitmap(company: CompanyProfileEntity, amount: Double? = null, size: Int = 400): Bitmap? {
         // 1. Check custom uploaded QR image
@@ -89,13 +102,10 @@ object QrCodeHelper {
             }
         }
 
-        // 2. Generate UPI QR code from UPI ID if provided
-        if (company.upiId.isNotBlank()) {
-            val upiPayload = buildUpiString(company.upiId, company.businessName, amount)
-            return generateQrBitmap(upiPayload, size)
-        }
-
-        return null
+        // 2. Generate UPI QR code from effective UPI ID
+        val effectiveUpi = resolveEffectiveUpiId(company)
+        val upiPayload = buildUpiString(effectiveUpi, company.businessName, amount)
+        return generateQrBitmap(upiPayload, size)
     }
 
     /**
@@ -118,17 +128,15 @@ object QrCodeHelper {
         }
 
         // 2. Fallback to generating UPI QR bitmap and converting to Base64
-        if (company.upiId.isNotBlank()) {
-            val bmp = getPaymentQrBitmap(company, amount, size = 300)
-            if (bmp != null) {
-                try {
-                    val stream = ByteArrayOutputStream()
-                    bmp.compress(Bitmap.CompressFormat.PNG, 100, stream)
-                    val bytes = stream.toByteArray()
-                    return Base64.encodeToString(bytes, Base64.NO_WRAP)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+        val bmp = getPaymentQrBitmap(company, amount, size = 300)
+        if (bmp != null) {
+            try {
+                val stream = ByteArrayOutputStream()
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                val bytes = stream.toByteArray()
+                return Base64.encodeToString(bytes, Base64.NO_WRAP)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
 

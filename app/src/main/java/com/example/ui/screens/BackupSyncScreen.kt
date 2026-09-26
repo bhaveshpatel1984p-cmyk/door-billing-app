@@ -527,7 +527,10 @@ fun BackupSyncScreen(
                                         val json = viewModel.getExportBackupJson()
                                         val file = LocalBackupHelper.createBackupFile(context, json)
                                         val intent = LocalBackupHelper.shareBackupFile(context, file)
-                                        context.startActivity(Intent.createChooser(intent, "Share Data Backup via"))
+                                        val chooser = Intent.createChooser(intent, "Share Data Backup via").apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(chooser)
                                     }
                                 },
                                 enabled = !isOperating,

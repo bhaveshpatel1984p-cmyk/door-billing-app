@@ -75,10 +75,11 @@ object InvoicePrinter {
         val items = billWithItems.items
         val totalSqFt = items.sumOf { it.sqFt }
         val totalQty = items.sumOf { it.qty }
-        val totalWithOldBalance = bill.grandTotal + if (bill.previousBalance > 0.0) bill.previousBalance else 0.0
+        val totalWithOldBalance = bill.grandTotal + bill.previousBalance
         val netPayableAmount = if (bill.netPayable > 0.0) bill.netPayable else totalWithOldBalance
         val finalRemainingDue = if (bill.paidAmount > 0.0) Math.max(0.0, netPayableAmount - bill.paidAmount) else netPayableAmount
-        val amountInWords = DimensionCalculator.convertToIndianCurrencyWords(if (bill.paidAmount > 0.0 && finalRemainingDue > 0.0) finalRemainingDue else netPayableAmount)
+        val effectivePayable = if (bill.paidAmount > 0.0 && finalRemainingDue > 0.0) finalRemainingDue else if (bill.previousBalance > 0) netPayableAmount else bill.grandTotal
+        val amountInWords = DimensionCalculator.convertToIndianCurrencyWords(effectivePayable)
 
         val itemRows = items.joinToString("") { item ->
             val partLines = item.particular.split("\n")
@@ -169,37 +170,40 @@ object InvoicePrinter {
             """.trimIndent()
         } else ""
 
-        val previousBalanceRow = if (bill.previousBalance > 0.0) {
-            val paidRowHtml = if (bill.paidAmount > 0.0) {
-                """
-                <tr>
-                    <td colspan="7" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#16a34a;">(-) Paid / Advance Received:</td>
-                    <td colspan="2" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#16a34a;">-₹${String.format(java.util.Locale.US, "%.2f", bill.paidAmount)}</td>
-                </tr>
-                """.trimIndent()
-            } else ""
-
+        val previousBalanceRow = if (bill.previousBalance > 0) {
             """
             <tr>
-                <td colspan="7" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#0369A1;">Current Bill Grand Total:</td>
-                <td colspan="2" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#0369A1;">₹${String.format(java.util.Locale.US, "%.2f", bill.grandTotal)}</td>
+                <td colspan="7" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#c2410c;">(+) Previous Balance / Due Balance:</td>
+                <td colspan="2" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#c2410c;">+₹${String.format(java.util.Locale.US, "%.2f", bill.previousBalance)}</td>
             </tr>
-            <tr style="background-color:#fffbeb;">
-                <td colspan="7" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#b45309;">(+) Previous Balance / Due Bal (Purana Baaki):</td>
-                <td colspan="2" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#b45309;">+₹${String.format(java.util.Locale.US, "%.2f", bill.previousBalance)}</td>
-            </tr>
-            $paidRowHtml
+            """.trimIndent()
+        } else ""
+
+        val totalRows = if (bill.previousBalance > 0 && bill.paidAmount <= 0.0) {
+            """
             <tr>
-                <td colspan="7" style="border:1px solid #333; text-align:right; padding:6px 8px; font-size:12px; font-weight:bold; background-color:#e0f2fe; color:#0369A1;">${if (bill.paidAmount > 0.0) "REMAINING DUE BALANCE:" else "TOTAL DUE / NET PAYABLE:"}</td>
-                <td colspan="2" style="border:1px solid #333; text-align:right; padding:6px 8px; font-size:13px; font-weight:bold; background-color:#0369A1; color:white;">₹${String.format(java.util.Locale.US, "%.2f", finalRemainingDue)}</td>
+                <td colspan="7" style="border:1px solid #333; text-align:right; padding:5px 8px; font-size:11px; font-weight:bold; color:#334155;">Current Bill Total:</td>
+                <td colspan="2" style="border:1px solid #333; text-align:right; padding:5px 8px; font-size:11px; font-weight:bold; color:#0F172A;">₹${String.format(java.util.Locale.US, "%.2f", bill.grandTotal)}</td>
+            </tr>
+            $previousBalanceRow
+            <tr>
+                <td colspan="7" style="border:1px solid #333; text-align:right; padding:6px 8px; font-size:12px; font-weight:bold; background-color:#e0f2fe; color:#0369A1;">TOTAL DUE:</td>
+                <td colspan="2" style="border:1px solid #333; text-align:right; padding:6px 8px; font-size:13px; font-weight:bold; background-color:#0369A1; color:white;">₹${String.format(java.util.Locale.US, "%.2f", netPayableAmount)}</td>
             </tr>
             """.trimIndent()
         } else if (bill.paidAmount > 0.0) {
             """
             <tr>
-                <td colspan="7" style="border:1px solid #333; text-align:right; padding:6px 8px; font-size:12px; font-weight:bold; background-color:#e0f2fe; color:#0369A1;">GRAND TOTAL:</td>
-                <td colspan="2" style="border:1px solid #333; text-align:right; padding:6px 8px; font-size:13px; font-weight:bold; background-color:#0369A1; color:white;">₹${String.format(java.util.Locale.US, "%.2f", bill.grandTotal)}</td>
+                <td colspan="7" style="border:1px solid #333; text-align:right; padding:5px 8px; font-size:11px; font-weight:bold; color:#334155;">Current Bill Total:</td>
+                <td colspan="2" style="border:1px solid #333; text-align:right; padding:5px 8px; font-size:11px; font-weight:bold; color:#0F172A;">₹${String.format(java.util.Locale.US, "%.2f", bill.grandTotal)}</td>
             </tr>
+            $previousBalanceRow
+            ${if (bill.previousBalance > 0) """
+            <tr>
+                <td colspan="7" style="border:1px solid #333; text-align:right; padding:5px 8px; font-size:11px; font-weight:bold; color:#334155;">Total Due Amount:</td>
+                <td colspan="2" style="border:1px solid #333; text-align:right; padding:5px 8px; font-size:11px; font-weight:bold; color:#0F172A;">₹${String.format(java.util.Locale.US, "%.2f", netPayableAmount)}</td>
+            </tr>
+            """ else ""}
             <tr>
                 <td colspan="7" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#16a34a;">(-) Paid / Received Amount:</td>
                 <td colspan="2" style="border:1px solid #333; border-top:none; text-align:right; padding:4px 8px; font-weight:bold; color:#16a34a;">-₹${String.format(java.util.Locale.US, "%.2f", bill.paidAmount)}</td>
@@ -218,7 +222,8 @@ object InvoicePrinter {
             """.trimIndent()
         }
 
-        val qrBase64 = QrCodeHelper.getPaymentQrBase64(company, netPayableAmount)
+        val effectiveUpi = QrCodeHelper.resolveEffectiveUpiId(company)
+        val qrBase64 = QrCodeHelper.getPaymentQrBase64(company, effectivePayable)
         val qrHtml = if (!qrBase64.isNullOrBlank()) {
             """
             <td style="width:22%; border-left:1px solid #ddd; text-align:center; vertical-align:middle; padding:6px; background-color:#fafafa;">
@@ -292,15 +297,19 @@ object InvoicePrinter {
                                 $logoHtml
                                 <div>
                                     <h1 style="margin:0; font-size:18px; color:#0369A1; text-transform:uppercase; letter-spacing:0.5px;">${company.businessName}</h1>
-                                    <div style="margin-top:2px; font-size:10.5px; color:#333;">${company.address}${if (company.addressLine2.isNotBlank()) "<br/>" + company.addressLine2 else ""}</div>
-                                    <div style="margin-top:3px; font-size:10.5px;">
-                                        <strong>GSTIN:</strong> ${company.gstNo} &nbsp;|&nbsp; <strong>PAN:</strong> ${company.pan}
+                                    <div style="margin-top:2px; font-size:10px; color:#333;">${company.address}</div>
+                                    ${if (company.addressLine2.isNotBlank()) """<div style="font-size:10px; color:#333;">${company.addressLine2}</div>""" else ""}
+                                    <div style="margin-top:2px; font-size:10px; color:#1e293b;">
+                                        <strong>GSTIN/UIN:</strong> ${company.gstNo}${if (company.pan.isNotBlank()) """ &nbsp;|&nbsp; <strong>PAN:</strong> ${company.pan}""" else ""}
                                     </div>
-                                    <div style="font-size:10.5px; color:#333;">
-                                        <strong>Mobile:</strong> ${company.displayMobile} &nbsp;|&nbsp; <strong>Email:</strong> ${company.email.ifBlank { "N/A" }}
+                                    <div style="font-size:10px; color:#1e293b;">
+                                        <strong>Contact :</strong> ${company.displayMobile}
                                     </div>
-                                    <div style="font-size:10.5px; color:#333;">
-                                        <strong>State:</strong> ${company.state} (${company.stateCode})
+                                    <div style="font-size:10px; color:#1e293b;">
+                                        <strong>E-Mail :</strong> ${company.email.ifBlank { "N/A" }}
+                                    </div>
+                                    <div style="font-size:10px; color:#1e293b;">
+                                        <strong>State Name :</strong> ${company.state}${if (company.stateCode.isNotBlank()) """, Code : ${company.stateCode}""" else ""}
                                     </div>
                                 </div>
                             </div>
@@ -387,7 +396,7 @@ object InvoicePrinter {
                         $gstRows
                         $otherChargesRow
                         $discountRow
-                        $previousBalanceRow
+                        $totalRows
                     </tbody>
                 </table>
 
@@ -399,30 +408,37 @@ object InvoicePrinter {
                 <!-- Terms, Bank Details, Signature -->
                 <table class="terms-table">
                     <tr>
-                        <td style="width:$bankWidth;">
-                            <div style="font-weight:bold; color:#0369A1; margin-bottom:3px;">BANK ACCOUNT DETAILS:</div>
-                            <div style="font-size:10.5px; line-height:1.4;">
+                        <td style="width:$bankWidth; vertical-align:top;">
+                            <div style="font-weight:bold; color:#0369A1; margin-bottom:3px; font-size:11px;">BANK ACCOUNT DETAILS:</div>
+                            <div style="font-size:10.5px; line-height:1.4; color:#1e293b;">
                                 <strong>Bank:</strong> ${company.bankName}<br/>
                                 <strong>A/C No:</strong> ${company.accountNo}<br/>
                                 <strong>IFSC Code:</strong> ${company.ifscCode}<br/>
-                                ${if (company.upiId.isNotBlank()) "<strong>UPI ID:</strong> ${company.upiId}<br/>" else ""}
+                                ${if (effectiveUpi.isNotBlank()) "<strong>UPI ID:</strong> $effectiveUpi<br/>" else ""}
                             </div>
-                            <div style="margin-top:6px; font-weight:bold; color:#0369A1; font-size:10px;">DECLARATION & TERMS:</div>
-                            <div style="font-size:9.5px; color:#555; line-height:1.3;">${company.declaration}</div>
+                            <div style="margin-top:8px; border-top:1px dashed #cbd5e1; padding-top:6px;">
+                                <div style="font-weight:bold; font-size:11px; color:#0f172a; margin-bottom:2px;"><span style="text-decoration:underline;">Declaration</span></div>
+                                <div style="font-size:10px; color:#1e293b; line-height:1.35;">${company.declaration}</div>
+                            </div>
                         </td>
                         $qrHtml
                         <td style="width:$signWidth; border-left:1px solid #ddd; text-align:center; vertical-align:bottom; padding-bottom:16px;">
-                            <div style="font-size:10px; color:#666; margin-bottom:45px;">For <strong>${company.businessName}</strong></div>
-                            <div style="border-top:1px dashed #777; width:75%; margin:0 auto; padding-top:4px; font-weight:bold; font-size:10px;">
+                            <div style="font-size:10.5px; color:#334155; margin-bottom:45px;">For <strong>${company.businessName}</strong></div>
+                            <div style="border-top:1px dashed #777; width:75%; margin:0 auto; padding-top:4px; font-weight:bold; font-size:10px; color:#0f172a;">
                                 AUTHORIZED SIGNATORY
                             </div>
                         </td>
                     </tr>
                 </table>
 
-                <!-- Bottom Jurisdiction Banner (Requirement 4) -->
-                <div style="text-align:center; padding:6px 12px; background-color:#f1f5f9; border-top:1px solid #333; font-size:10px; font-weight:bold; color:#1e293b; letter-spacing:0.5px;">
-                    ${DimensionCalculator.formatJurisdictionClause(company.jurisdiction)}
+                <!-- Bottom Jurisdiction Banner & Computer Generated Notice (Centered: Jurisdiction on top, Computer Generated below) -->
+                <div style="text-align:center; padding:7px 14px; background-color:#EEF5F9; border-top:1px solid #333; font-size:10px;">
+                    <div style="font-weight:bold; letter-spacing:0.5px; color:#0f172a; margin-bottom:2px;">
+                        ${DimensionCalculator.formatJurisdictionClause(company.jurisdiction)}
+                    </div>
+                    <div style="font-size:9.5px; color:#64748b; font-style:italic;">
+                        This is a Computer Generated ${if (bill.isQuotation) "Quotation" else "Invoice"}
+                    </div>
                 </div>
             </div>
         </body>
@@ -766,7 +782,10 @@ object InvoicePrinter {
                         <td style="width:58%; background-color:#EEF5F9;">
                             <h2 style="margin:0; font-size:17px; color:#0369A1; text-transform:uppercase;">${company.businessName}</h2>
                             <div style="font-size:10.5px; color:#333; margin-top:2px;">${company.fullAddress}</div>
-                            <div style="font-size:10.5px; margin-top:2px;"><strong>GSTIN:</strong> ${company.gstNo} &nbsp;|&nbsp; <strong>Mobile:</strong> ${company.displayMobile}</div>
+                            <div style="font-size:10px; margin-top:2px;"><strong>GSTIN/UIN:</strong> ${company.gstNo}</div>
+                            <div style="font-size:10px;"><strong>Contact :</strong> ${company.displayMobile}</div>
+                            <div style="font-size:10px;"><strong>E-Mail :</strong> ${company.email.ifBlank { "N/A" }}</div>
+                            <div style="font-size:10px;"><strong>State Name :</strong> ${company.state}${if (company.stateCode.isNotBlank()) ", Code : " + company.stateCode else ""}</div>
                             <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #cbd5e1;">
                                 <div style="font-weight:bold; color:#0369A1; font-size:11px;">CONSIGNEE / DELIVER TO:</div>
                                 <div style="font-size:13px; font-weight:bold; color:#111; margin-top:2px;">${bill.customerName}</div>

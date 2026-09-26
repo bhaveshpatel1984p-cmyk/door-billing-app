@@ -664,17 +664,22 @@ fun CompanyProfileScreen(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // QR Preview Box
-                        val activeQrBitmap = remember(qrCodeUri, upiId, businessName) {
+                        val activeQrBitmap = remember(qrCodeUri, upiId, businessName, accountNo, ifscCode, mobile) {
                             if (!qrCodeUri.isNullOrBlank() && File(qrCodeUri!!).exists()) {
                                 try {
                                     android.graphics.BitmapFactory.decodeFile(qrCodeUri)
                                 } catch (e: Exception) {
                                     null
                                 }
-                            } else if (upiId.isNotBlank()) {
-                                QrCodeHelper.generateQrBitmap(QrCodeHelper.buildUpiString(upiId, businessName), size = 300)
                             } else {
-                                null
+                                val tempCompany = CompanyProfileEntity(
+                                    businessName = businessName,
+                                    accountNo = accountNo,
+                                    ifscCode = ifscCode,
+                                    mobile = mobile,
+                                    upiId = upiId
+                                )
+                                QrCodeHelper.getPaymentQrBitmap(tempCompany, size = 300)
                             }
                         }
 
@@ -744,7 +749,9 @@ fun CompanyProfileScreen(
                                 } else if (upiId.isNotBlank()) {
                                     "✓ Auto-generating UPI QR from: $upiId"
                                 } else {
-                                    "⚠️ Upload a QR image or enter UPI ID below"
+                                    val tempCompany = CompanyProfileEntity(businessName = businessName, accountNo = accountNo, ifscCode = ifscCode, mobile = mobile)
+                                    val effUpi = QrCodeHelper.resolveEffectiveUpiId(tempCompany)
+                                    "✓ Auto-generating UPI QR: $effUpi"
                                 },
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,

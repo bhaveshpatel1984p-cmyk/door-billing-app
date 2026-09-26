@@ -132,7 +132,7 @@ data class CompanyProfileEntity(
     val declaration: String = "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct. Goods once sold will not be taken back.",
     val logoUri: String? = null, // Stored local Uri or null to use default vector logo
     val qrCodeUri: String? = null, // Stored local Uri for uploaded payment QR code image (PhonePe/GPay/Paytm)
-    val upiId: String = "" // Optional UPI ID (e.g. nirmaldoor@upi) to auto-generate UPI QR code
+    val upiId: String = "nirmaldoor@upi" // Default UPI ID (e.g. nirmaldoor@upi) to auto-generate UPI QR code
 ) {
     val fullAddress: String
         get() = if (addressLine2.isNotBlank()) "$address, $addressLine2" else address

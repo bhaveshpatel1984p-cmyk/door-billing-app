@@ -95,6 +95,19 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         // Initialize Google Account state
         refreshGoogleAccount()
 
+        // Ensure company profile has a valid UPI ID for automatic QR code generation
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val profile = repository.getCompanyProfileSync()
+                if (profile.upiId.isBlank()) {
+                    val defaultUpi = if (profile.mobile.isNotBlank()) "${profile.mobile.trim()}@upi" else "nirmaldoor@upi"
+                    repository.updateCompanyProfile(profile.copy(upiId = defaultUpi))
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+
         // Pre-populate standard door presets if empty
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -257,7 +270,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val roundOffDraft = MutableStateFlow(0.0)
     val paidAmountDraft = MutableStateFlow(0.0)
     val previousBalanceDraft = MutableStateFlow(0.0)
-    val includePreviousBalanceDraft = MutableStateFlow(true)
+    val includePreviousBalanceDraft = MutableStateFlow(false)
     val notesDraft = MutableStateFlow("")
     val billItemsDraft = MutableStateFlow<List<BillItemEntity>>(emptyList())
     val isQuotationDraft = MutableStateFlow(false)
@@ -362,9 +375,9 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         selectedCustomerDraft.value = customer
         if (customer != null) {
             viewModelScope.launch {
-                val prevBal = repository.getCustomerDueBalance(customer.id, excludeBillId = billIdDraft.value)
-                previousBalanceDraft.value = maxOf(0.0, prevBal)
-                includePreviousBalanceDraft.value = (prevBal > 0.0)
+                val prevBal = repository.getCustomerDueBalance(customer.id)
+                previousBalanceDraft.value = prevBal
+                includePreviousBalanceDraft.value = (prevBal > 0)
             }
         } else {
             previousBalanceDraft.value = 0.0
@@ -373,9 +386,9 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun setPreviousBalance(amount: Double) {
-        val clean = maxOf(0.0, amount)
-        previousBalanceDraft.value = clean
-        includePreviousBalanceDraft.value = (clean > 0.0)
+        val positiveAmount = Math.max(0.0, amount)
+        previousBalanceDraft.value = positiveAmount
+        includePreviousBalanceDraft.value = (positiveAmount > 0)
     }
 
     fun toggleIncludePreviousBalance(include: Boolean) {
@@ -402,9 +415,9 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             billDateMillisDraft.value = System.currentTimeMillis()
             selectedCustomerDraft.value = presetCustomer
             if (presetCustomer != null) {
-                val prevBal = repository.getCustomerDueBalance(presetCustomer.id, excludeBillId = 0L)
-                previousBalanceDraft.value = maxOf(0.0, prevBal)
-                includePreviousBalanceDraft.value = (prevBal > 0.0)
+                val prevBal = repository.getCustomerDueBalance(presetCustomer.id)
+                previousBalanceDraft.value = prevBal
+                includePreviousBalanceDraft.value = (prevBal > 0)
             } else {
                 previousBalanceDraft.value = 0.0
                 includePreviousBalanceDraft.value = false
@@ -443,17 +456,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             )
         selectedCustomerDraft.value = foundCustomer
         previousBalanceDraft.value = bill.previousBalance
-        includePreviousBalanceDraft.value = (bill.previousBalance > 0.0)
-
-        viewModelScope.launch {
-            if (bill.previousBalance <= 0.0) {
-                val pastDue = repository.getCustomerDueBalance(bill.customerId, excludeBillId = bill.id)
-                if (pastDue > 0.0) {
-                    previousBalanceDraft.value = pastDue
-                    includePreviousBalanceDraft.value = true
-                }
-            }
-        }
+        includePreviousBalanceDraft.value = (bill.previousBalance > 0)
 
         dimensionUnitDraft.value = bill.dimensionUnit
         taxRateDraft.value = bill.taxRate

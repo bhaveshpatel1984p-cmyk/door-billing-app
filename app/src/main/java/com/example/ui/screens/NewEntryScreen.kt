@@ -138,11 +138,11 @@ fun NewEntryScreen(
     var quickCustomerAddress by remember { mutableStateOf("") }
     var quickCustomerGst by remember { mutableStateOf("") }
     var billSavedShareTarget by remember { mutableStateOf<BillWithItems?>(null) }
-    var showPreviousBalanceDialog by remember { mutableStateOf(false) }
-    var prevBalanceInput by remember { mutableStateOf("") }
     val isQuotation by viewModel.isQuotationDraft.collectAsStateWithLifecycle()
     val allDoorPresets by viewModel.allDoorPresets.collectAsStateWithLifecycle()
     var showPresetManagerDialog by remember { mutableStateOf(false) }
+    var showEditPreviousBalanceDialog by remember { mutableStateOf(false) }
+    var editPreviousBalanceInput by remember { mutableStateOf("") }
 
     // Live calculations for current line item
     val liveHeight = heightStr.toDoubleOrNull() ?: 0.0
@@ -390,106 +390,57 @@ fun NewEntryScreen(
                                     if (cust.mobile.isNotBlank()) Text("Phone: ${cust.mobile}", fontSize = 12.sp)
                                     if (cust.address.isNotBlank()) Text("Address: ${cust.address}", fontSize = 12.sp)
                                     if (cust.gstNo.isNotBlank()) Text("GSTIN: ${cust.gstNo}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
 
-                            if (previousBalance > 0.0) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFFEF3C7),
-                                    border = BorderStroke(1.dp, Color(0xFFF59E0B)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
+                                    if (previousBalance > 0 || includePreviousBalance) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        HorizontalDivider(thickness = 0.8.dp, color = Color(0xFFCBD5E1))
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(
-                                                modifier = Modifier.weight(1f),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column {
-                                                    Text(
-                                                        "Pending Due (Purana Baaki):",
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 12.sp,
-                                                        color = Color(0xFF92400E)
-                                                    )
-                                                    Text(
-                                                        DimensionCalculator.formatCurrency(previousBalance),
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        fontSize = 16.sp,
-                                                        color = Color(0xFFB45309)
-                                                    )
-                                                }
-                                                Spacer(Modifier.width(6.dp))
-                                                IconButton(
-                                                    onClick = {
-                                                        prevBalanceInput = String.format(java.util.Locale.US, "%.2f", previousBalance)
-                                                        showPreviousBalanceDialog = true
-                                                    },
-                                                    modifier = Modifier.size(28.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.Edit,
-                                                        contentDescription = "Edit Old Balance",
-                                                        tint = Color(0xFF92400E),
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                }
-                                            }
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
+                                            Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    if (includePreviousBalance) "Bill me Jodein" else "Mat Jodein",
-                                                    fontSize = 11.5.sp,
+                                                    "(+) Previous Balance / Due Balance",
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (includePreviousBalance) Color(0xFF15803D) else Color(0xFF6B7280)
+                                                    fontSize = 12.sp,
+                                                    color = Color(0xFFC2410C)
                                                 )
+                                                Text(
+                                                    DimensionCalculator.formatCurrency(previousBalance),
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 14.sp,
+                                                    color = Color(0xFFC2410C)
+                                                )
+                                            }
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                TextButton(
+                                                    onClick = {
+                                                        editPreviousBalanceInput = if (previousBalance > 0) previousBalance.toString() else ""
+                                                        showEditPreviousBalanceDialog = true
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text("Edit ✎", fontSize = 12.sp)
+                                                }
                                                 Switch(
                                                     checked = includePreviousBalance,
                                                     onCheckedChange = { viewModel.toggleIncludePreviousBalance(it) }
                                                 )
                                             }
                                         }
-                                        Text(
-                                            if (includePreviousBalance)
-                                                "✓ Purana baaki is bill ke Kul Net Payable me jod diya gaya hai."
-                                            else
-                                                "✕ Purana baaki is bill me shamil nahi hai (sirf naya bill banega).",
-                                            fontSize = 10.5.sp,
-                                            color = Color(0xFF78350F)
-                                        )
+                                    } else {
+                                        TextButton(
+                                            onClick = {
+                                                editPreviousBalanceInput = ""
+                                                showEditPreviousBalanceDialog = true
+                                            },
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Text("+ Add Previous Due Balance", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.primary)
+                                        }
                                     }
-                                }
-                            } else if (selectedCustomer != null) {
-                                TextButton(
-                                    onClick = {
-                                        prevBalanceInput = ""
-                                        showPreviousBalanceDialog = true
-                                    },
-                                    modifier = Modifier.padding(top = 2.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Add,
-                                        contentDescription = "Add Old Balance",
-                                        tint = Color(0xFFB45309),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        "+ Purana Baaki (Old Due Balance) Jodein",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFB45309)
-                                    )
                                 }
                             }
                         }
@@ -1229,48 +1180,24 @@ fun NewEntryScreen(
                                 )
                             }
 
-                            if (previousBalance > 0.0) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (includePreviousBalance) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
-                                    border = BorderStroke(1.dp, if (includePreviousBalance) Color(0xFFF59E0B) else Color(0xFFCBD5E1)),
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                            if (effectivePreviousBalance > 0) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Switch(
-                                                checked = includePreviousBalance,
-                                                onCheckedChange = { viewModel.toggleIncludePreviousBalance(it) },
-                                                modifier = Modifier.padding(end = 8.dp)
-                                            )
-                                            Column {
-                                                Text(
-                                                    "(+) Previous Balance (Purana Baaki)",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (includePreviousBalance) Color(0xFF92400E) else Color.Gray
-                                                )
-                                                Text(
-                                                    if (includePreviousBalance) "Bill me Jod diya gaya hai" else "Is bill me nahi joda",
-                                                    fontSize = 10.sp,
-                                                    color = if (includePreviousBalance) Color(0xFF78350F) else Color.Gray
-                                                )
-                                            }
-                                        }
-                                        Text(
-                                            text = (if (includePreviousBalance) "+ " else "") + DimensionCalculator.formatCurrency(previousBalance),
-                                            fontSize = 13.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (includePreviousBalance) Color(0xFFB45309) else Color.Gray
-                                        )
-                                    }
+                                    Text(
+                                        "(+) Previous Balance / Due Balance:",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFC2410C)
+                                    )
+                                    Text(
+                                        "+ " + DimensionCalculator.formatCurrency(effectivePreviousBalance),
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFC2410C)
+                                    )
                                 }
                             }
 
@@ -1289,7 +1216,7 @@ fun NewEntryScreen(
                                 ) {
                                     Column {
                                         Text(
-                                            if (effectivePreviousBalance > 0.0) "TOTAL NET PAYABLE" else "GRAND TOTAL",
+                                            if (effectivePreviousBalance > 0) "TOTAL DUE" else "GRAND TOTAL",
                                             color = Color.White.copy(alpha = 0.85f),
                                             fontSize = 11.5.sp,
                                             fontWeight = FontWeight.Bold
@@ -1391,6 +1318,48 @@ fun NewEntryScreen(
                 }
             }
         }
+    }
+
+    // Edit / Set Previous Due Balance Dialog
+    if (showEditPreviousBalanceDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditPreviousBalanceDialog = false },
+            title = { Text("Edit / Set Previous Due Balance") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Set the previous outstanding due balance for this customer. This amount will appear on the bill as '(+) Previous Balance / Due Balance'.",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = editPreviousBalanceInput,
+                        onValueChange = { editPreviousBalanceInput = it },
+                        label = { Text("Previous Due Balance (₹)") },
+                        placeholder = { Text("0.00") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val amt = editPreviousBalanceInput.toDoubleOrNull() ?: 0.0
+                        viewModel.setPreviousBalance(amt)
+                        showEditPreviousBalanceDialog = false
+                    }
+                ) {
+                    Text("Apply")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditPreviousBalanceDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     // Quick New Customer Dialog
@@ -1519,48 +1488,6 @@ fun NewEntryScreen(
             viewModel = viewModel,
             presets = allDoorPresets,
             onDismiss = { showPresetManagerDialog = false }
-        )
-    }
-
-    // Manual Edit / Add Previous Due Balance Dialog
-    if (showPreviousBalanceDialog) {
-        AlertDialog(
-            onDismissRequest = { showPreviousBalanceDialog = false },
-            title = { Text("Previous Due Balance (Purana Baaki)") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Customer ka purana baaki amount darj karein. Yeh amount is bill me jud kar kul Total Due dikhayega.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedTextField(
-                        value = prevBalanceInput,
-                        onValueChange = { prevBalanceInput = it },
-                        label = { Text("Purana Baaki Amount (₹)") },
-                        placeholder = { Text("0.00") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val amount = prevBalanceInput.toDoubleOrNull() ?: 0.0
-                        viewModel.setPreviousBalance(amount)
-                        showPreviousBalanceDialog = false
-                    }
-                ) {
-                    Text("Apply (Shamil Karein)")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPreviousBalanceDialog = false }) {
-                    Text("Cancel")
-                }
-            }
         )
     }
 }

@@ -118,7 +118,7 @@ object PdfInvoiceGenerator {
         // 2. Company Header & Invoice Meta Row
         var currentY = margin + titleBarHeight
         val colSplitX = margin + (contentWidth * 0.62f)
-        val row1Height = 65f
+        val row1Height = 84f
 
         // Draw backgrounds for Row 1
         fillPaint.color = Color.parseColor("#EEF5F9")
@@ -153,7 +153,7 @@ object PdfInvoiceGenerator {
 
         var textStartX = margin + 10f
         if (logoBitmap != null) {
-            val logoSize = 44f
+            val logoSize = 48f
             val destRect = RectF(textStartX, currentY + 10f, textStartX + logoSize, currentY + 10f + logoSize)
             canvas.drawBitmap(logoBitmap, null, destRect, null)
             textStartX += logoSize + 8f
@@ -161,51 +161,63 @@ object PdfInvoiceGenerator {
 
         // Business Name
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textPaint.textSize = 14f
+        textPaint.textSize = 13f
         textPaint.color = Color.parseColor("#0369A1")
-        canvas.drawText(company.businessName.uppercase(Locale.getDefault()), textStartX, currentY + 15f, textPaint)
+        canvas.drawText(company.businessName.uppercase(Locale.getDefault()), textStartX, currentY + 14f, textPaint)
 
-        // Address & Contacts
+        // Address & Contacts (Reference format: Name -> Address -> GSTIN/UIN -> Contact -> E-Mail -> State Name)
         textPaint.typeface = Typeface.DEFAULT
         textPaint.textSize = 7.5f
         textPaint.color = Color.parseColor("#334155")
-        canvas.drawText(company.fullAddress, textStartX, currentY + 26f, textPaint)
-
-        val taxInfo = "GSTIN: ${company.gstNo} | PAN: ${company.pan}"
-        canvas.drawText(taxInfo, textStartX, currentY + 36f, textPaint)
-
-        val contactInfo = buildString {
-            append("Mobile: ${company.displayMobile}")
-            if (company.email.isNotBlank()) {
-                append(" | Email: ${company.email}")
-            }
-            append(" | State: ${company.state} (${company.stateCode})")
+        var leftY = currentY + 24f
+        canvas.drawText(company.address, textStartX, leftY, textPaint)
+        if (company.addressLine2.isNotBlank()) {
+            leftY += 9f
+            canvas.drawText(company.addressLine2, textStartX, leftY, textPaint)
         }
-        canvas.drawText(contactInfo, textStartX, currentY + 46f, textPaint)
+
+        leftY += 9.5f
+        val taxInfo = "GSTIN/UIN: ${company.gstNo}${if (company.pan.isNotBlank()) " | PAN: ${company.pan}" else ""}"
+        canvas.drawText(taxInfo, textStartX, leftY, textPaint)
+
+        leftY += 9.5f
+        canvas.drawText("Contact : ${company.displayMobile}", textStartX, leftY, textPaint)
+
+        leftY += 9.5f
+        canvas.drawText("E-Mail : ${company.email.ifBlank { "N/A" }}", textStartX, leftY, textPaint)
+
+        leftY += 9.5f
+        canvas.drawText("State Name : ${company.state}${if (company.stateCode.isNotBlank()) ", Code : ${company.stateCode}" else ""}", textStartX, leftY, textPaint)
 
         // Invoice Meta on Right Side (colSplitX to end)
         textPaint.textSize = 8f
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.color = Color.parseColor("#334155")
-        canvas.drawText(if (bill.isQuotation) "Quote No:" else "Invoice No:", colSplitX + 8f, currentY + 18f, textPaint)
+        canvas.drawText(if (bill.isQuotation) "Quote No:" else "Invoice No:", colSplitX + 8f, currentY + 16f, textPaint)
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.color = Color.parseColor("#0284C7")
         textPaint.textSize = 9.5f
-        canvas.drawText(bill.invoiceNo, colSplitX + 58f, currentY + 18f, textPaint)
+        canvas.drawText(bill.invoiceNo, colSplitX + 58f, currentY + 16f, textPaint)
 
         textPaint.textSize = 8f
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.color = Color.parseColor("#334155")
-        canvas.drawText("Date:", colSplitX + 8f, currentY + 34f, textPaint)
+        canvas.drawText("Date:", colSplitX + 8f, currentY + 32f, textPaint)
         textPaint.color = Color.parseColor("#0F172A")
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        canvas.drawText(DimensionCalculator.formatDate(bill.dateMillis), colSplitX + 58f, currentY + 34f, textPaint)
+        canvas.drawText(DimensionCalculator.formatDate(bill.dateMillis), colSplitX + 58f, currentY + 32f, textPaint)
 
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.color = Color.parseColor("#334155")
-        canvas.drawText("Unit:", colSplitX + 8f, currentY + 50f, textPaint)
+        canvas.drawText("Unit:", colSplitX + 8f, currentY + 48f, textPaint)
         textPaint.color = Color.parseColor("#0F172A")
-        canvas.drawText("${bill.dimensionUnit} Dimension", colSplitX + 58f, currentY + 50f, textPaint)
+        canvas.drawText("${bill.dimensionUnit} Dimension", colSplitX + 58f, currentY + 48f, textPaint)
+
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.color = Color.parseColor("#334155")
+        canvas.drawText("Place of Supply:", colSplitX + 8f, currentY + 64f, textPaint)
+        textPaint.color = Color.parseColor("#0F172A")
+        canvas.drawText(company.state, colSplitX + 75f, currentY + 64f, textPaint)
 
         currentY += row1Height
         canvas.drawLine(margin, currentY, pageWidth - margin, currentY, borderPaint)
@@ -291,7 +303,7 @@ object PdfInvoiceGenerator {
         textPaint.color = Color.parseColor("#0F172A")
         canvas.drawText("${String.format(Locale.US, "%.2f", totalSqFt)} Sq.Ft", colSplitX + 70f, currentY + 37f, textPaint)
 
-        val totalWithOldBalance = bill.grandTotal + if (bill.previousBalance > 0.0) bill.previousBalance else 0.0
+        val totalWithOldBalance = bill.grandTotal + bill.previousBalance
         val netPayableAmount = if (bill.netPayable > 0.0) bill.netPayable else totalWithOldBalance
         val finalRemainingDue = if (bill.paidAmount > 0.0) Math.max(0.0, netPayableAmount - bill.paidAmount) else netPayableAmount
         val payStatus = if (bill.paidAmount >= netPayableAmount) "PAID" else if (bill.paidAmount > 0) "PARTIAL" else "UNPAID"
@@ -453,7 +465,18 @@ object PdfInvoiceGenerator {
             canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
         }
 
-        if (bill.previousBalance > 0.0) {
+        // Previous Balance / Due Balance (if applicable)
+        if (bill.previousBalance > 0) {
+            textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textPaint.textSize = 8.5f
+            textPaint.color = Color.parseColor("#C2410C")
+            canvas.drawText("(+) Previous Balance / Due Balance:", margin + 12f, currentY + 13f, textPaint)
+            canvas.drawText("+ ₹${String.format(Locale.US, "%.2f", bill.previousBalance)}", colAmount + 4f, currentY + 13f, textPaint)
+            currentY += 16f
+            canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
+        }
+
+        if (bill.previousBalance > 0 && bill.paidAmount <= 0.0) {
             // Bill Total Row
             textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textPaint.textSize = 8.5f
@@ -463,32 +486,16 @@ object PdfInvoiceGenerator {
             currentY += 16f
             canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
 
-            // Previous Balance Row
-            textPaint.color = Color.parseColor("#B45309")
-            canvas.drawText("(+) Previous Balance / Due Bal (Purana Baaki):", margin + 12f, currentY + 13f, textPaint)
-            canvas.drawText("+ ₹${String.format(Locale.US, "%.2f", bill.previousBalance)}", colAmount + 4f, currentY + 13f, textPaint)
-            currentY += 16f
-            canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
-
-            if (bill.paidAmount > 0.0) {
-                textPaint.color = Color.parseColor("#16A34A")
-                canvas.drawText("(-) Paid / Received Amount:", margin + 12f, currentY + 13f, textPaint)
-                canvas.drawText("- ₹${String.format(Locale.US, "%.2f", bill.paidAmount)}", colAmount + 4f, currentY + 13f, textPaint)
-                currentY += 16f
-                canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
-            }
-
-            // TOTAL NET DUE / PAYABLE Highlight Row
+            // TOTAL DUE Highlight Row
             fillPaint.color = Color.parseColor("#0284C7")
             canvas.drawRect(margin, currentY, colEnd, currentY + 24f, fillPaint)
 
             textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textPaint.textSize = 10f
             textPaint.color = Color.WHITE
-            val totalLabel = if (bill.paidAmount > 0.0) "REMAINING DUE BALANCE:" else "TOTAL DUE / NET PAYABLE:"
-            canvas.drawText(totalLabel, margin + 12f, currentY + 16f, textPaint)
+            canvas.drawText("TOTAL DUE:", margin + 12f, currentY + 16f, textPaint)
 
-            val netPayableStr = "₹${String.format(Locale.US, "%.2f", finalRemainingDue)}"
+            val netPayableStr = "₹${String.format(Locale.US, "%.2f", netPayableAmount)}"
             canvas.drawText(netPayableStr, colAmount + 4f, currentY + 16f, textPaint)
         } else if (bill.paidAmount > 0.0) {
             // Bill Total Row
@@ -499,6 +506,14 @@ object PdfInvoiceGenerator {
             canvas.drawText("₹${String.format(Locale.US, "%.2f", bill.grandTotal)}", colAmount + 4f, currentY + 13f, textPaint)
             currentY += 16f
             canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
+
+            if (bill.previousBalance > 0) {
+                textPaint.color = Color.parseColor("#0F172A")
+                canvas.drawText("Total Due Amount:", colRate - 65f, currentY + 13f, textPaint)
+                canvas.drawText("₹${String.format(Locale.US, "%.2f", netPayableAmount)}", colAmount + 4f, currentY + 13f, textPaint)
+                currentY += 16f
+                canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
+            }
 
             // Paid Row
             textPaint.color = Color.parseColor("#16A34A")
@@ -541,45 +556,74 @@ object PdfInvoiceGenerator {
         textPaint.typeface = Typeface.DEFAULT
         textPaint.textSize = 8f
         textPaint.color = Color.parseColor("#334155")
-        val inWords = "Amount in Words: " + DimensionCalculator.convertToIndianCurrencyWords(netPayableAmount)
+        val effectivePayable = if (bill.paidAmount > 0.0 && finalRemainingDue > 0.0) finalRemainingDue else if (bill.previousBalance > 0) netPayableAmount else bill.grandTotal
+        val inWords = "Amount in Words: " + DimensionCalculator.convertToIndianCurrencyWords(effectivePayable)
         canvas.drawText(inWords, margin + 8f, currentY + 12f, textPaint)
 
         currentY += 18f
         canvas.drawLine(margin, currentY, colEnd, currentY, linePaint)
 
         // Bank Details, QR Code & Declaration
-        val qrBitmap = QrCodeHelper.getPaymentQrBitmap(company, netPayableAmount, size = 180)
+        val qrBitmap = QrCodeHelper.getPaymentQrBitmap(company, effectivePayable, size = 180)
         val hasQr = qrBitmap != null
-        val termsHeight = 72f
-        val bankWidth = if (hasQr) contentWidth * 0.46f else contentWidth * 0.58f
+        val termsHeight = 92f
+        val bankWidth = if (hasQr) contentWidth * 0.48f else contentWidth * 0.60f
         val qrWidth = if (hasQr) contentWidth * 0.20f else 0f
 
         // Bank Details Box (Left)
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textPaint.textSize = 8f
+        textPaint.textSize = 7.5f
         textPaint.color = Color.parseColor("#0369A1")
-        canvas.drawText("BANK ACCOUNT DETAILS:", margin + 8f, currentY + 12f, textPaint)
+        canvas.drawText("BANK ACCOUNT DETAILS:", margin + 8f, currentY + 11f, textPaint)
 
         textPaint.typeface = Typeface.DEFAULT
         textPaint.textSize = 7f
         textPaint.color = Color.parseColor("#1E293B")
-        canvas.drawText("Bank: ${company.bankName}", margin + 8f, currentY + 23f, textPaint)
-        canvas.drawText("A/C: ${company.accountNo} | IFSC: ${company.ifscCode}", margin + 8f, currentY + 33f, textPaint)
-        if (company.upiId.isNotBlank()) {
-            canvas.drawText("UPI: ${company.upiId}", margin + 8f, currentY + 43f, textPaint)
+        canvas.drawText("Bank: ${company.bankName}", margin + 8f, currentY + 20f, textPaint)
+        canvas.drawText("A/C: ${company.accountNo} | IFSC: ${company.ifscCode}", margin + 8f, currentY + 29f, textPaint)
+        var declTopY = currentY + 36f
+        val effectiveUpi = QrCodeHelper.resolveEffectiveUpiId(company)
+        if (effectiveUpi.isNotBlank()) {
+            canvas.drawText("UPI: $effectiveUpi", margin + 8f, currentY + 38f, textPaint)
+            declTopY = currentY + 46f
         }
 
-        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textPaint.color = Color.parseColor("#0369A1")
-        textPaint.textSize = 7f
-        val declHeaderY = if (company.upiId.isNotBlank()) currentY + 53f else currentY + 45f
-        canvas.drawText("DECLARATION:", margin + 8f, declHeaderY, textPaint)
+        // Divider before Declaration
+        canvas.drawLine(margin + 8f, declTopY - 2f, margin + bankWidth - 8f, declTopY - 2f, linePaint)
 
+        // Reference format: Underlined "Declaration"
+        textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textPaint.textSize = 7.5f
+        textPaint.color = Color.parseColor("#0F172A")
+        val declHeader = "Declaration"
+        canvas.drawText(declHeader, margin + 8f, declTopY + 7f, textPaint)
+        val declHeaderWidth = textPaint.measureText(declHeader)
+        canvas.drawLine(margin + 8f, declTopY + 8.5f, margin + 8f + declHeaderWidth, declTopY + 8.5f, textPaint)
+
+        // Draw FULL Declaration text across multiple lines without truncation
         textPaint.typeface = Typeface.DEFAULT
-        textPaint.textSize = 6f
-        textPaint.color = Color.parseColor("#64748B")
-        val declShort = if (company.declaration.length > 95) company.declaration.take(92) + "..." else company.declaration
-        canvas.drawText(declShort, margin + 8f, declHeaderY + 9f, textPaint)
+        textPaint.textSize = 6.6f
+        textPaint.color = Color.parseColor("#1E293B")
+        val declMaxWidth = bankWidth - 16f
+        var lineY = declTopY + 16.5f
+        val words = company.declaration.split(" ")
+        var currentLine = StringBuilder()
+
+        for (word in words) {
+            val testLine = if (currentLine.isEmpty()) word else "$currentLine $word"
+            if (textPaint.measureText(testLine) <= declMaxWidth) {
+                currentLine.append(if (currentLine.isEmpty()) "" else " ").append(word)
+            } else {
+                if (currentLine.isNotEmpty()) {
+                    canvas.drawText(currentLine.toString(), margin + 8f, lineY, textPaint)
+                    lineY += 8.2f
+                }
+                currentLine = StringBuilder(word)
+            }
+        }
+        if (currentLine.isNotEmpty()) {
+            canvas.drawText(currentLine.toString(), margin + 8f, lineY, textPaint)
+        }
 
         // QR Code Box (Center) if available
         if (hasQr && qrBitmap != null) {
@@ -594,9 +638,9 @@ object PdfInvoiceGenerator {
             canvas.drawText(qrTitle, qrBoxX + (qrWidth - qrTitleW) / 2f, currentY + 11f, textPaint)
 
             // Draw QR code image
-            val qrSize = 46f
+            val qrSize = 52f
             val qrLeft = qrBoxX + (qrWidth - qrSize) / 2f
-            val qrTop = currentY + 14f
+            val qrTop = currentY + 16f
             val destRect = RectF(qrLeft, qrTop, qrLeft + qrSize, qrTop + qrSize)
             canvas.drawBitmap(qrBitmap, null, destRect, null)
 
@@ -605,11 +649,12 @@ object PdfInvoiceGenerator {
             textPaint.color = Color.parseColor("#64748B")
             val qrFooter = "PhonePe • GPay • Paytm"
             val qrFooterW = textPaint.measureText(qrFooter)
-            canvas.drawText(qrFooter, qrBoxX + (qrWidth - qrFooterW) / 2f, currentY + termsHeight - 3f, textPaint)
+            canvas.drawText(qrFooter, qrBoxX + (qrWidth - qrFooterW) / 2f, currentY + termsHeight - 4f, textPaint)
         }
 
         // Signature Box (Right)
         val signBoxX = margin + bankWidth + qrWidth
+        val signBoxWidth = colEnd - signBoxX
         canvas.drawLine(signBoxX, currentY, signBoxX, currentY + termsHeight, linePaint)
         textPaint.typeface = Typeface.DEFAULT
         textPaint.textSize = 7.5f
@@ -617,27 +662,41 @@ object PdfInvoiceGenerator {
         val forText = "For ${company.businessName}"
         canvas.drawText(forText, signBoxX + 12f, currentY + 18f, textPaint)
 
-        canvas.drawLine(signBoxX + 12f, currentY + 52f, colEnd - 12f, currentY + 52f, linePaint)
+        val authSignY = currentY + termsHeight - 12f
+        canvas.drawLine(signBoxX + 12f, authSignY - 10f, colEnd - 12f, authSignY - 10f, linePaint)
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.textSize = 7.5f
         textPaint.color = Color.parseColor("#0F172A")
-        canvas.drawText("AUTHORIZED SIGNATORY", signBoxX + 14f, currentY + 62f, textPaint)
+        val authText = "AUTHORIZED SIGNATORY"
+        val authW = textPaint.measureText(authText)
+        canvas.drawText(authText, signBoxX + (signBoxWidth - authW) / 2f, authSignY, textPaint)
 
         currentY += termsHeight
         canvas.drawLine(margin, currentY, colEnd, currentY, borderPaint)
 
-        // 5. REQUIREMENT 4: JURISDICTION AT THE BOTTOM END
-        val jurisdictionBannerHeight = 22f
-        fillPaint.color = Color.parseColor("#F1F5F9")
+        // 5. BOTTOM JURISDICTION & COMPUTER GENERATED NOTICE (Centered: Jurisdiction on top, Computer Generated below)
+        val jurisdictionBannerHeight = 28f
+        fillPaint.color = Color.parseColor("#EEF5F9")
         canvas.drawRect(margin, pageHeight - margin - jurisdictionBannerHeight, colEnd, pageHeight - margin, fillPaint)
         canvas.drawLine(margin, pageHeight - margin - jurisdictionBannerHeight, colEnd, pageHeight - margin - jurisdictionBannerHeight, linePaint)
 
+        // Line 1: SUBJECT TO [JURISDICTION] JURISDICTION ONLY (Centered, Bold)
         textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textPaint.textSize = 8.5f
         textPaint.color = Color.parseColor("#1E293B")
         val jurisdictionText = DimensionCalculator.formatJurisdictionClause(company.jurisdiction)
         val jWidth = textPaint.measureText(jurisdictionText)
-        canvas.drawText(jurisdictionText, (pageWidth - jWidth) / 2f, pageHeight - margin - 8f, textPaint)
+        val jX = margin + (contentWidth - jWidth) / 2f
+        canvas.drawText(jurisdictionText, jX, pageHeight - margin - 15f, textPaint)
+
+        // Line 2: This is a Computer Generated Invoice / Quotation (Centered, below Line 1)
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.textSize = 7f
+        textPaint.color = Color.parseColor("#64748B")
+        val compGenText = if (bill.isQuotation) "This is a Computer Generated Quotation" else "This is a Computer Generated Invoice"
+        val cWidth = textPaint.measureText(compGenText)
+        val cX = margin + (contentWidth - cWidth) / 2f
+        canvas.drawText(compGenText, cX, pageHeight - margin - 5f, textPaint)
     }
 
     /**

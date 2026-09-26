@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import android.app.Activity
-import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
@@ -27,11 +25,9 @@ import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.DoorBack
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -40,7 +36,6 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,17 +46,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.data.db.BillWithItems
@@ -69,8 +61,6 @@ import com.example.data.db.CompanyProfileEntity
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
 import com.example.util.DimensionCalculator
-import com.example.util.InvoicePrinter
-import com.example.util.ShareHelper
 
 @Composable
 fun DashboardScreen(
@@ -80,81 +70,35 @@ fun DashboardScreen(
     val context = LocalContext.current
     val company by viewModel.companyProfile.collectAsStateWithLifecycle()
     val bills by viewModel.allBills.collectAsStateWithLifecycle()
-    val customerBalances by viewModel.customerBalances.collectAsStateWithLifecycle()
-    val customers by viewModel.allCustomers.collectAsStateWithLifecycle()
 
     var showExitDialog by remember { mutableStateOf(false) }
-    var billToShare by remember { mutableStateOf<BillWithItems?>(null) }
-
-    val totalOutstanding = customerBalances.sumOf { it.balance }
-    val totalRevenue = bills.sumOf { it.bill.grandTotal }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .testTag("dashboard_screen"),
-        contentPadding = PaddingValues(bottom = 32.dp)
+        contentPadding = PaddingValues(bottom = 24.dp)
     ) {
-        // Hero Header with Company Profile
+        // Company Profile Header
         item {
-            DashboardHeader(company = company, onCompanyClick = { viewModel.navigateTo(AppScreen.COMPANY_PROFILE) })
-        }
-
-        // Summary Stats Strip
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                StatCard(
-                    title = "Total Billed",
-                    value = DimensionCalculator.formatCurrency(totalRevenue),
-                    subtitle = "${bills.size} Invoices (Tap for Stats)",
-                    color = Color(0xFF0284C7),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { viewModel.navigateTo(AppScreen.FINANCIAL_STATS) }
-                )
-                StatCard(
-                    title = "Due Balance",
-                    value = DimensionCalculator.formatCurrency(totalOutstanding),
-                    subtitle = "${customers.size} Customers (Tap for Stats)",
-                    color = if (totalOutstanding > 0) Color(0xFFDC2626) else Color(0xFF16A34A),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { viewModel.navigateTo(AppScreen.FINANCIAL_STATS) }
-                )
-            }
-        }
-
-        // Main Navigation Grid / Action Buttons as specified in prompt
-        item {
-            Text(
-                text = "MAIN MENU / DASHBOARD ACTIONS",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    color = MaterialTheme.colorScheme.primary
-                ),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            DashboardHeader(
+                company = company,
+                onCompanyClick = { viewModel.navigateTo(AppScreen.COMPANY_PROFILE) }
             )
         }
 
-        // 1) Create Customer & 2) New Entry
+        // Action Buttons Row 1: 1) Create Customer & 2) New Entry
         item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DashboardActionButton(
                     title = "1) Create Customer",
-                    subtitle = "Add Name, Mobile, GST & Address",
+                    subtitle = "Add party with GST",
                     icon = Icons.Default.PersonAdd,
-                    iconBgColor = Color(0xFF0284C7),
                     testTag = "create_customer_button",
                     modifier = Modifier.weight(1f),
                     onClick = {
@@ -165,9 +109,8 @@ fun DashboardScreen(
 
                 DashboardActionButton(
                     title = "2) New Entry",
-                    subtitle = "Create Door Bill (Sq.Ft calc)",
+                    subtitle = "Create door bill",
                     icon = Icons.Default.AddCircle,
-                    iconBgColor = Color(0xFF16A34A),
                     testTag = "new_entry_button",
                     modifier = Modifier.weight(1f),
                     onClick = { viewModel.startNewBill() }
@@ -175,7 +118,7 @@ fun DashboardScreen(
             }
         }
 
-        // 3) Edit Entry & 4) View Customer Balance
+        // Action Buttons Row 2: 3) Edit Entry & 4) View Balance
         item {
             Row(
                 modifier = Modifier
@@ -185,9 +128,8 @@ fun DashboardScreen(
             ) {
                 DashboardActionButton(
                     title = "3) Edit Entry",
-                    subtitle = "View, Edit & Delete Bills",
+                    subtitle = "Search & modify bills",
                     icon = Icons.Default.EditNote,
-                    iconBgColor = Color(0xFFD97706),
                     testTag = "edit_entry_button",
                     modifier = Modifier.weight(1f),
                     onClick = { viewModel.navigateTo(AppScreen.EDIT_ENTRY) }
@@ -195,9 +137,8 @@ fun DashboardScreen(
 
                 DashboardActionButton(
                     title = "4) View Balance",
-                    subtitle = "Ledger, Print & WhatsApp",
+                    subtitle = "Customer dues & ledger",
                     icon = Icons.Default.AccountBalance,
-                    iconBgColor = Color(0xFF7C3AED),
                     testTag = "view_customer_balance_button",
                     modifier = Modifier.weight(1f),
                     onClick = { viewModel.navigateTo(AppScreen.CUSTOMER_BALANCE) }
@@ -205,7 +146,7 @@ fun DashboardScreen(
             }
         }
 
-        // 5) Company Profile view/edit & Financial Stats
+        // Action Buttons Row 3: 5) Company Profile & 6) Financial Stats
         item {
             Row(
                 modifier = Modifier
@@ -215,9 +156,8 @@ fun DashboardScreen(
             ) {
                 DashboardActionButton(
                     title = "5) Company Profile",
-                    subtitle = "GST, Bank & Logo Settings",
+                    subtitle = "Settings & print details",
                     icon = Icons.Default.Business,
-                    iconBgColor = Color(0xFF0F766E),
                     testTag = "company_profile_button",
                     modifier = Modifier.weight(1f),
                     onClick = { viewModel.navigateTo(AppScreen.COMPANY_PROFILE) }
@@ -225,9 +165,8 @@ fun DashboardScreen(
 
                 DashboardActionButton(
                     title = "6) Financial Stats",
-                    subtitle = "Revenue, Due & Invoices",
+                    subtitle = "Reports & sales summary",
                     icon = Icons.Default.Assessment,
-                    iconBgColor = Color(0xFF0284C7),
                     testTag = "financial_stats_button",
                     modifier = Modifier.weight(1f),
                     onClick = { viewModel.navigateTo(AppScreen.FINANCIAL_STATS) }
@@ -235,7 +174,7 @@ fun DashboardScreen(
             }
         }
 
-        // 7) Purchase Entry & 8) Cloud Backup
+        // Action Buttons Row 4: 7) Purchase Hub & 8) Cloud Backup
         item {
             Row(
                 modifier = Modifier
@@ -244,10 +183,9 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DashboardActionButton(
-                    title = "7) Purchase Entry",
-                    subtitle = "Suppliers, Bills & Dues",
+                    title = "7) Purchase Hub",
+                    subtitle = "Purchases & inventory",
                     icon = Icons.Default.ShoppingCart,
-                    iconBgColor = Color(0xFF0F766E),
                     testTag = "purchase_hub_button",
                     modifier = Modifier.weight(1f),
                     onClick = { viewModel.navigateTo(AppScreen.PURCHASE_HUB) }
@@ -255,9 +193,8 @@ fun DashboardScreen(
 
                 DashboardActionButton(
                     title = "8) Cloud Backup",
-                    subtitle = "Google Drive & Sync",
+                    subtitle = "Export & sync data",
                     icon = Icons.Default.CloudSync,
-                    iconBgColor = Color(0xFF2563EB),
                     testTag = "cloud_backup_button",
                     modifier = Modifier.weight(1f),
                     onClick = { viewModel.navigateTo(AppScreen.BACKUP_SYNC) }
@@ -265,7 +202,7 @@ fun DashboardScreen(
             }
         }
 
-        // 9) Exit Application
+        // Action Buttons Row 5: 9) Exit Application
         item {
             Row(
                 modifier = Modifier
@@ -274,34 +211,31 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DashboardActionButton(
-                    title = "9) Exit Application",
-                    subtitle = "Close Nirmal Door Billing",
+                    title = "9) Exit",
+                    subtitle = "Close application",
                     icon = Icons.AutoMirrored.Filled.ExitToApp,
-                    iconBgColor = Color(0xFF475569),
                     testTag = "exit_button",
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.weight(1f),
                     onClick = { showExitDialog = true }
                 )
+
+                Spacer(modifier = Modifier.weight(1f))
             }
         }
 
-        // Recent Invoices Section
+        // Recent Invoices Header
         item {
             Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "RECENT INVOICES",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    text = "Recent Bills",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
                 if (bills.isNotEmpty()) {
                     TextButton(onClick = { viewModel.navigateTo(AppScreen.EDIT_ENTRY) }) {
@@ -311,13 +245,14 @@ fun DashboardScreen(
             }
         }
 
+        // Recent Bills List
         if (bills.isEmpty()) {
             item {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Column(
                         modifier = Modifier
@@ -329,40 +264,33 @@ fun DashboardScreen(
                             imageVector = Icons.Default.ReceiptLong,
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "No Bills Created Yet",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Tap 'New Entry' above to create your first door invoice with Sq.ft calculation.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp)
+                            text = "No bills created yet",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         )
                     }
                 }
             }
         } else {
-            items(bills.take(4)) { billWithItems ->
+            items(bills.take(5)) { billWithItems ->
                 RecentBillItem(
                     billWithItems = billWithItems,
-                    onClick = { onViewBill(billWithItems) },
-                    onShareClick = { billToShare = billWithItems }
+                    onClick = { onViewBill(billWithItems) }
                 )
             }
         }
     }
 
-    // Exit confirmation dialog
     if (showExitDialog) {
         AlertDialog(
             onDismissRequest = { showExitDialog = false },
-            title = { Text("Exit App?") },
-            text = { Text("Are you sure you want to close the Door Billing app?") },
+            title = { Text("Exit Application") },
+            text = { Text("Are you sure you want to exit the app?") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -370,37 +298,13 @@ fun DashboardScreen(
                         (context as? Activity)?.finishAffinity()
                     }
                 ) {
-                    Text("Exit", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    Text("Exit", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showExitDialog = false }) {
                     Text("Cancel")
                 }
-            }
-        )
-    }
-
-    // Share Options Dialog for recent bill
-    billToShare?.let { b ->
-        ShareOptionsDialog(
-            title = "Share Tax Invoice",
-            subtitle = "Invoice #${b.bill.invoiceNo} • ${b.bill.customerName}",
-            onDismiss = { billToShare = null },
-            onShareWhatsApp = {
-                ShareHelper.shareInvoicePdfWhatsApp(context, b, company)
-            },
-            onShareWhatsAppBusiness = {
-                ShareHelper.shareInvoicePdfWhatsAppBusiness(context, b, company)
-            },
-            onSharePdf = {
-                ShareHelper.shareInvoicePdfGeneral(context, b, company)
-            },
-            onShareText = {
-                ShareHelper.shareInvoiceTextGeneral(context, b, company)
-            },
-            onPrint = {
-                InvoicePrinter.printInvoice(context, b, company)
             }
         )
     }
@@ -416,34 +320,26 @@ fun DashboardHeader(
             .fillMaxWidth()
             .padding(16.dp)
             .clickable { onCompanyClick() },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xFF0369A1),
-                            Color(0xFF075985),
-                            Color(0xFF0C4A6E)
-                        )
-                    )
-                )
-                .padding(20.dp)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+            Surface(
+                modifier = Modifier.size(60.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = Color.White
             ) {
-                // Company Logo or Default Icon
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.White)
-                        .padding(2.dp),
+                        .fillMaxSize()
+                        .padding(4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     if (!company.logoUri.isNullOrBlank()) {
@@ -461,79 +357,49 @@ fun DashboardHeader(
                         )
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = company.businessName,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 18.sp
-                        ),
-                        maxLines = 1
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = company.businessName,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
+                )
+                if (company.gstNo.isNotBlank()) {
                     Text(
-                        text = "GST: ${company.gstNo} • ${company.state}",
+                        text = "GST: ${company.gstNo}",
                         style = MaterialTheme.typography.bodySmall.copy(
-                            color = Color.White.copy(alpha = 0.85f)
-                        ),
-                        maxLines = 1
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
                     )
+                }
+                Text(
+                    text = "📞 ${company.displayMobile}",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                )
+                if (company.state.isNotBlank()) {
                     Text(
-                        text = "📞 ${company.displayMobile}",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = Color(0xFFFDE68A),
-                            fontWeight = FontWeight.SemiBold
+                        text = company.state,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                         )
                     )
                 }
             }
-        }
-    }
-}
 
-@Composable
-fun StatCard(
-    title: String,
-    value: String,
-    subtitle: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    ElevatedCard(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = color
-                ),
-                maxLines = 1
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            IconButton(onClick = onCompanyClick) {
+                Icon(
+                    imageVector = Icons.Default.EditNote,
+                    contentDescription = "Edit Company Profile",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
-            )
+            }
         }
     }
 }
@@ -543,7 +409,6 @@ fun DashboardActionButton(
     title: String,
     subtitle: String,
     icon: ImageVector,
-    iconBgColor: Color,
     testTag: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
@@ -551,9 +416,9 @@ fun DashboardActionButton(
     ElevatedCard(
         onClick = onClick,
         modifier = modifier
-            .height(115.dp)
+            .height(100.dp)
             .testTag(testTag),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -565,34 +430,23 @@ fun DashboardActionButton(
                 .padding(12.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(iconBgColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    tint = iconBgColor,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp)
+            )
             Column {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.5.sp
+                        fontWeight = FontWeight.Bold
                     ),
                     maxLines = 1
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 10.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
                     maxLines = 1
@@ -605,11 +459,12 @@ fun DashboardActionButton(
 @Composable
 fun RecentBillItem(
     billWithItems: BillWithItems,
-    onClick: () -> Unit,
-    onShareClick: (() -> Unit)? = null
+    onClick: () -> Unit
 ) {
     val bill = billWithItems.bill
     val totalSqFt = billWithItems.items.sumOf { it.sqFt }
+    val isFullPaid = bill.paidAmount >= bill.grandTotal
+    val isPartial = bill.paidAmount > 0 && bill.paidAmount < bill.grandTotal
 
     ElevatedCard(
         modifier = Modifier
@@ -617,7 +472,8 @@ fun RecentBillItem(
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
     ) {
         Row(
             modifier = Modifier
@@ -638,64 +494,50 @@ fun RecentBillItem(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = DimensionCalculator.formatDate(bill.dateMillis),
-                        style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     )
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = bill.customerName,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    maxLines = 1
                 )
                 Text(
                     text = "${billWithItems.items.size} items • ${String.format(java.util.Locale.US, "%.1f", totalSqFt)} Sq.Ft",
                     style = MaterialTheme.typography.bodySmall.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = DimensionCalculator.formatCurrency(bill.grandTotal),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0369A1)
-                        )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = DimensionCalculator.formatCurrency(bill.grandTotal),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (bill.paidAmount >= bill.grandTotal) Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
-                        modifier = Modifier.padding(top = 2.dp)
-                    ) {
-                        Text(
-                            text = if (bill.paidAmount >= bill.grandTotal) "Paid" else "Unpaid",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = if (bill.paidAmount >= bill.grandTotal) Color(0xFF166534) else Color(0xFF92400E),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 10.sp
-                            ),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                if (onShareClick != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = onShareClick,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .testTag("share_recent_bill_${bill.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Share on WhatsApp or other apps",
-                            tint = Color(0xFF25D366)
-                        )
-                    }
-                }
+                )
+                Text(
+                    text = when {
+                        isFullPaid -> "PAID"
+                        isPartial -> "PARTIAL"
+                        else -> "UNPAID"
+                    },
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            isFullPaid -> Color(0xFF16A34A)
+                            isPartial -> Color(0xFFD97706)
+                            else -> MaterialTheme.colorScheme.error
+                        }
+                    )
+                )
             }
         }
     }

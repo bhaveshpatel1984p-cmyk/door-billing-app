@@ -39,10 +39,18 @@ object ShareHelper {
                 putExtra(Intent.EXTRA_SUBJECT, "Tax Invoice #${bill.invoiceNo} - ${bill.customerName}")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "Share Tax Invoice via"))
+            startChooserSafely(context, intent, "Share Tax Invoice via")
         } catch (e: Exception) {
             Toast.makeText(context, "Could not share PDF: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun startChooserSafely(context: Context, intent: Intent, title: String) {
+        val chooser = Intent.createChooser(intent, title).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        context.startActivity(chooser)
     }
 
     /**
@@ -130,7 +138,7 @@ object ShareHelper {
                 putExtra(Intent.EXTRA_TEXT, caption)
                 putExtra(Intent.EXTRA_SUBJECT, "Invoice #${billWithItems.bill.invoiceNo}")
             }
-            context.startActivity(Intent.createChooser(intent, "Share Invoice Summary via"))
+            startChooserSafely(context, intent, "Share Invoice Summary via")
         } catch (e: Exception) {
             Toast.makeText(context, "Error sharing summary: ${e.message}", Toast.LENGTH_SHORT).show()
         }
@@ -146,10 +154,16 @@ object ShareHelper {
             appendLine("👤 *Customer:* ${bill.customerName}")
             appendLine("📅 *Date:* ${DimensionCalculator.formatDate(bill.dateMillis)}")
             appendLine("🚪 *Items:* ${billWithItems.items.size} doors (${String.format(Locale.US, "%.2f", totalSqFt)} Sq.Ft)")
-            appendLine("💰 *Grand Total:* ₹${String.format(Locale.US, "%.2f", bill.grandTotal)}")
+            appendLine("💰 *Current Bill Total:* ₹${String.format(Locale.US, "%.2f", bill.grandTotal)}")
+            if (bill.previousBalance > 0.0) {
+                appendLine("➕ *(+) Previous Balance / Due Balance:* ₹${String.format(Locale.US, "%.2f", bill.previousBalance)}")
+                val totalDue = if (bill.netPayable > 0.0) bill.netPayable else bill.grandTotal + bill.previousBalance
+                appendLine("💳 *Total Due:* ₹${String.format(Locale.US, "%.2f", totalDue)}")
+            }
             if (bill.paidAmount > 0.0) {
                 appendLine("💵 *Received:* ₹${String.format(Locale.US, "%.2f", bill.paidAmount)}")
-                val due = bill.grandTotal - bill.paidAmount
+                val effectiveTotal = if (bill.previousBalance > 0) (if (bill.netPayable > 0.0) bill.netPayable else bill.grandTotal + bill.previousBalance) else bill.grandTotal
+                val due = Math.max(0.0, effectiveTotal - bill.paidAmount)
                 if (due > 0.0) {
                     appendLine("⚠️ *Balance Due:* ₹${String.format(Locale.US, "%.2f", due)}")
                 }
@@ -191,7 +205,7 @@ object ShareHelper {
                     putExtra(Intent.EXTRA_TEXT, caption)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(fallbackIntent, chooserTitle))
+                startChooserSafely(context, fallbackIntent, chooserTitle)
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Could not share PDF: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -228,7 +242,7 @@ object ShareHelper {
                 putExtra(Intent.EXTRA_SUBJECT, "Account Statement - ${customer.name}")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "Share Account Statement via"))
+            startChooserSafely(context, intent, "Share Account Statement via")
         } catch (e: Exception) {
             Toast.makeText(context, "Could not generate Ledger PDF: ${e.message}", Toast.LENGTH_SHORT).show()
         }
@@ -404,7 +418,7 @@ object ShareHelper {
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, message)
                 }
-                context.startActivity(Intent.createChooser(fallbackIntent, "Share Bill"))
+                startChooserSafely(context, fallbackIntent, "Share Bill")
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Could not open WhatsApp: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -432,7 +446,7 @@ object ShareHelper {
                 putExtra(Intent.EXTRA_TEXT, "Dear ${billWithItems.bill.customerName},\nPlease find attached Delivery Challan #$challanNo for your door order dispatch.\nFrom: ${company.businessName}")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "Share Delivery Challan via"))
+            startChooserSafely(context, intent, "Share Delivery Challan via")
         } catch (e: Exception) {
             Toast.makeText(context, "Could not share Challan: ${e.message}", Toast.LENGTH_SHORT).show()
         }
@@ -488,7 +502,7 @@ object ShareHelper {
                 putExtra(Intent.EXTRA_TEXT, "Dear $customerName,\nThank you for your payment of ₹${String.format(Locale.US, "%.2f", payment.amount)}.\nPlease find attached official payment voucher #$rcptNo.\nFrom: ${company.businessName}")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "Share Payment Receipt via"))
+            startChooserSafely(context, intent, "Share Payment Receipt via")
         } catch (e: Exception) {
             Toast.makeText(context, "Could not share Receipt: ${e.message}", Toast.LENGTH_SHORT).show()
         }

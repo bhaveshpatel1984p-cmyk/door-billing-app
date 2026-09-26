@@ -157,7 +157,7 @@ fun InvoiceViewDialog(
                     item {
                         val totalQty = items.sumOf { it.qty }
                         val totalSqFt = items.sumOf { it.sqFt }
-                        val totalWithOldBalance = bill.grandTotal + if (bill.previousBalance > 0.0) bill.previousBalance else 0.0
+                        val totalWithOldBalance = bill.grandTotal + bill.previousBalance
                         val netPayableAmount = if (bill.netPayable > 0.0) bill.netPayable else totalWithOldBalance
                         val payStatus = if (bill.paidAmount >= netPayableAmount) "PAID" else if (bill.paidAmount > 0) "PARTIAL" else "UNPAID"
 
@@ -232,20 +232,26 @@ fun InvoiceViewDialog(
                                                 )
                                             }
                                         }
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(3.dp))
                                         Text(
-                                            text = "GSTIN: ${company.gstNo} | PAN: ${company.pan}",
-                                            fontSize = 9.5.sp,
+                                            text = "GSTIN/UIN: ${company.gstNo}${if (company.pan.isNotBlank()) " | PAN: ${company.pan}" else ""}",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Medium,
                                             color = Color(0xFF1E293B)
                                         )
                                         Text(
-                                            text = "Mobile: ${company.displayMobile}${if (company.email.isNotBlank()) " | Email: ${company.email}" else ""}",
-                                            fontSize = 9.5.sp,
+                                            text = "Contact : ${company.displayMobile}",
+                                            fontSize = 9.sp,
                                             color = Color(0xFF334155)
                                         )
                                         Text(
-                                            text = "State: ${company.state} (${company.stateCode})",
-                                            fontSize = 9.5.sp,
+                                            text = "E-Mail : ${company.email.ifBlank { "N/A" }}",
+                                            fontSize = 9.sp,
+                                            color = Color(0xFF334155)
+                                        )
+                                        Text(
+                                            text = "State Name : ${company.state}${if (company.stateCode.isNotBlank()) ", Code : ${company.stateCode}" else ""}",
+                                            fontSize = 9.sp,
                                             color = Color(0xFF334155)
                                         )
                                     }
@@ -489,55 +495,84 @@ fun InvoiceViewDialog(
                                     }
                                 }
 
+                                if (bill.previousBalance > 0) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("(+) Previous Balance / Due Balance:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC2410C))
+                                        Text("+ " + DimensionCalculator.formatCurrency(bill.previousBalance), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC2410C))
+                                    }
+                                }
+
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                                val netPayableAmount = if (bill.netPayable > 0.0) bill.netPayable else if (bill.previousBalance > 0.0) (bill.grandTotal + bill.previousBalance) else bill.grandTotal
+                                val totalWithOldBal = bill.grandTotal + bill.previousBalance
+                                val netPayableAmt = if (bill.netPayable > 0.0) bill.netPayable else totalWithOldBal
+                                val finalRemainingDue = if (bill.paidAmount > 0.0) Math.max(0.0, netPayableAmt - bill.paidAmount) else netPayableAmt
 
-                                if (bill.previousBalance > 0.0) {
+                                if (bill.previousBalance > 0 && bill.paidAmount <= 0.0) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Current Bill Total:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(DimensionCalculator.formatCurrency(bill.grandTotal), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Current Bill Total:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                        Text(DimensionCalculator.formatCurrency(bill.grandTotal), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                                     }
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("(+) Previous Balance (Purana Baaki):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
-                                        Text("+ " + DimensionCalculator.formatCurrency(bill.previousBalance), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                                        Text("TOTAL DUE:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text(
+                                            DimensionCalculator.formatCurrency(netPayableAmt),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 18.sp,
+                                            color = Color(0xFF0369A1)
+                                        )
                                     }
-                                    if (bill.paidAmount > 0.0) {
+                                } else if (bill.paidAmount > 0.0) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Current Bill Total:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                                        Text(DimensionCalculator.formatCurrency(bill.grandTotal), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+                                    }
+                                    if (bill.previousBalance > 0) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("(-) Paid / Received:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
-                                            Text("- " + DimensionCalculator.formatCurrency(bill.paidAmount), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                                            Text("Total Due Amount:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                                            Text(DimensionCalculator.formatCurrency(netPayableAmt), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                                         }
                                     }
-                                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
-                                    val finalRemainingDue = if (bill.paidAmount > 0.0) Math.max(0.0, netPayableAmount - bill.paidAmount) else netPayableAmount
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            if (bill.paidAmount > 0.0) "REMAINING DUE:" else "TOTAL DUE / NET PAYABLE:",
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 14.sp,
-                                            color = Color(0xFF0369A1)
-                                        )
+                                        Text("(-) Paid / Received:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                                        Text("- " + DimensionCalculator.formatCurrency(bill.paidAmount), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("REMAINING DUE:", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color(0xFFB91C1C))
                                         Text(
                                             DimensionCalculator.formatCurrency(finalRemainingDue),
                                             fontWeight = FontWeight.ExtraBold,
                                             fontSize = 18.sp,
-                                            color = Color(0xFF0369A1)
+                                            color = Color(0xFFB91C1C)
                                         )
                                     }
                                 } else {
@@ -554,42 +589,19 @@ fun InvoiceViewDialog(
                                             color = Color(0xFF0369A1)
                                         )
                                     }
-                                    if (bill.paidAmount > 0.0) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text("(-) Paid / Received:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
-                                            Text("- " + DimensionCalculator.formatCurrency(bill.paidAmount), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
-                                        }
-                                        HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
-                                        val remaining = Math.max(0.0, bill.grandTotal - bill.paidAmount)
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text("REMAINING DUE:", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color(0xFFB91C1C))
-                                            Text(
-                                                DimensionCalculator.formatCurrency(remaining),
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontSize = 18.sp,
-                                                color = Color(0xFFB91C1C)
-                                            )
-                                        }
-                                    }
                                 }
 
+                                val effectivePayable = if (bill.paidAmount > 0.0 && finalRemainingDue > 0.0) finalRemainingDue else if (bill.previousBalance > 0) netPayableAmt else bill.grandTotal
+
                                 Text(
-                                    text = DimensionCalculator.convertToIndianCurrencyWords(netPayableAmount),
+                                    text = DimensionCalculator.convertToIndianCurrencyWords(effectivePayable),
                                     fontSize = 10.5.sp,
                                     fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
-                                val qrBitmap = remember(company, netPayableAmount) {
-                                    QrCodeHelper.getPaymentQrBitmap(company, netPayableAmount, size = 180)
+                                val qrBitmap = remember(company, effectivePayable) {
+                                    QrCodeHelper.getPaymentQrBitmap(company, effectivePayable, size = 180)
                                 }
                                 if (qrBitmap != null || company.bankName.isNotBlank() || company.accountNo.isNotBlank()) {
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -631,16 +643,57 @@ fun InvoiceViewDialog(
                                     }
                                 }
 
+                                // Declaration Box (Reference format: Underlined Declaration + Full text)
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 6.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(
+                                            text = "Declaration",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                                        )
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            text = company.declaration,
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 13.sp
+                                        )
+                                    }
+                                }
+
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
 
-                                Text(
-                                    text = DimensionCalculator.formatJurisdictionClause(company.jurisdiction),
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFEEF5F9), RoundedCornerShape(4.dp))
+                                        .padding(vertical = 6.dp, horizontal = 12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = DimensionCalculator.formatJurisdictionClause(company.jurisdiction),
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0F172A),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "This is a Computer Generated ${if (bill.isQuotation) "Quotation" else "Invoice"}",
+                                        fontSize = 8.5.sp,
+                                        fontStyle = FontStyle.Italic,
+                                        color = Color(0xFF64748B),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
