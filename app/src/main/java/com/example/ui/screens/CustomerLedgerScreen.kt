@@ -42,6 +42,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -56,6 +57,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -103,11 +105,20 @@ fun CustomerLedgerScreen(
     var selectedPaymentForReceipt by remember { mutableStateOf<PaymentEntity?>(null) }
 
     val allBills by viewModel.allBills.collectAsStateWithLifecycle()
+    val autoOpenPayment by viewModel.shouldAutoOpenPaymentDialog.collectAsStateWithLifecycle()
     var showLedgerShareOptions by remember { mutableStateOf(false) }
     var selectedBillForShare by remember { mutableStateOf<BillWithItems?>(null) }
     var selectedBillForViewModal by remember { mutableStateOf<BillWithItems?>(null) }
     var showEditOpeningBalanceDialog by remember { mutableStateOf(false) }
     var editOpeningBalanceInput by remember { mutableStateOf("") }
+
+    LaunchedEffect(autoOpenPayment) {
+        if (autoOpenPayment) {
+            payDateMillis = System.currentTimeMillis()
+            showPaymentDialog = true
+            viewModel.shouldAutoOpenPaymentDialog.value = false
+        }
+    }
 
     if (customer == null) {
         viewModel.navigateTo(AppScreen.CUSTOMER_BALANCE)
@@ -134,6 +145,17 @@ fun CustomerLedgerScreen(
                     }
                 },
                 actions = {
+                    // Quick Add Payment in TopBar
+                    IconButton(
+                        onClick = {
+                            payDateMillis = System.currentTimeMillis()
+                            showPaymentDialog = true
+                        },
+                        modifier = Modifier.testTag("topbar_add_payment_button")
+                    ) {
+                        Icon(Icons.Default.Payment, contentDescription = "Add Payment", tint = Color.White)
+                    }
+
                     // View PDF Button in TopBar
                     IconButton(
                         onClick = { showPdfViewerDialog = true }
@@ -170,6 +192,19 @@ fun CustomerLedgerScreen(
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White
                 )
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = {
+                    payDateMillis = System.currentTimeMillis()
+                    showPaymentDialog = true
+                },
+                icon = { Icon(Icons.Default.Payment, contentDescription = null) },
+                text = { Text("+ Add Payment (जमा)", fontWeight = FontWeight.Bold, fontSize = 14.sp) },
+                containerColor = Color(0xFF16A34A),
+                contentColor = Color.White,
+                modifier = Modifier.testTag("fab_add_payment")
             )
         }
     ) { paddingValues ->
@@ -266,29 +301,80 @@ fun CustomerLedgerScreen(
                 }
             }
 
-            // Quick Action Buttons Bar: Record Payment | View (PDF) | Print | WhatsApp
+            // Prominent Customer Payment (जमा) Action Banner
+            item {
+                ElevatedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("customer_payment_action_card"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFF0FDF4))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFDCFCE7),
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Payment,
+                                        contentDescription = null,
+                                        tint = Color(0xFF16A34A),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Customer Payment (पेमेंट जमा)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.5.sp,
+                                    color = Color(0xFF166534)
+                                )
+                                Text(
+                                    text = "Record Cash, UPI, Cheque or Bank payment",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF15803D)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                payDateMillis = System.currentTimeMillis()
+                                showPaymentDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                            modifier = Modifier.testTag("record_payment_button")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("+ Add Payment", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        }
+                    }
+                }
+            }
+
+            // Quick Action Buttons Bar: View (PDF) | Print | WhatsApp
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
-                        onClick = {
-                            payDateMillis = System.currentTimeMillis()
-                            showPaymentDialog = true
-                        },
-                        modifier = Modifier
-                            .weight(1.1f)
-                            .testTag("record_payment_button"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
-                    ) {
-                        Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("+ Pay", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                    }
-
                     Button(
                         onClick = { showPdfViewerDialog = true },
                         modifier = Modifier
@@ -296,11 +382,11 @@ fun CustomerLedgerScreen(
                             .testTag("view_ledger_pdf_button"),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                     ) {
                         Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("View", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("View PDF", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                     }
 
                     OutlinedButton(
@@ -315,24 +401,24 @@ fun CustomerLedgerScreen(
                                 company = company
                             )
                         },
-                        modifier = Modifier.weight(0.95f),
+                        modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                     ) {
                         Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF0284C7))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Print", fontSize = 12.sp, color = Color(0xFF0284C7))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Print", fontSize = 12.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
                     }
 
                     OutlinedButton(
                         onClick = { showLedgerShareOptions = true },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF25D366))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Share", fontSize = 12.sp, color = Color(0xFF16A34A))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Share", fontSize = 12.5.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -372,12 +458,31 @@ fun CustomerLedgerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     ) {
-                        Text(
-                            text = "No bills or payments recorded for this customer yet.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(16.dp)
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "No bills or payments recorded for this customer yet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = {
+                                    payDateMillis = System.currentTimeMillis()
+                                    showPaymentDialog = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("+ Add Customer Payment (पेमेंट जमा करें)", fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             } else {
@@ -802,6 +907,31 @@ fun CustomerLedgerScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text("Current Outstanding Due: ${DimensionCalculator.formatCurrency(balance)}", fontSize = 12.sp)
+
+                    if (balance > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFEFF6FF),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { payAmountStr = DimensionCalculator.formatDimension(balance) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Pay Full Due: ${DimensionCalculator.formatCurrency(balance)}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF1D4ED8)
+                                )
+                                Text("Auto-Fill ➔", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
+                            }
+                        }
+                    }
 
                     // Manual Date Entry / Selection for Payment
                     Row(

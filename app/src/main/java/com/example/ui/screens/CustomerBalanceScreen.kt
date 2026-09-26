@@ -19,15 +19,20 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -192,6 +197,9 @@ fun CustomerBalanceScreen(
                         summary = summary,
                         onClick = {
                             viewModel.openCustomerLedger(summary.customer)
+                        },
+                        onAddPayment = {
+                            viewModel.openCustomerLedger(summary.customer, openPaymentDialog = true)
                         }
                     )
                 }
@@ -203,7 +211,8 @@ fun CustomerBalanceScreen(
 @Composable
 fun CustomerBalanceCard(
     summary: CustomerBalanceSummary,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onAddPayment: () -> Unit = {}
 ) {
     val cust = summary.customer
     val balance = summary.balance
@@ -216,66 +225,103 @@ fun CustomerBalanceCard(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        Column(
+            modifier = Modifier.padding(14.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = cust.primaryTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                if (!cust.subtitle.isNullOrBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "👤 Contact: ${cust.subtitle}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
+                        text = cust.primaryTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (!cust.subtitle.isNullOrBlank()) {
+                        Text(
+                            text = "👤 Contact: ${cust.subtitle}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (cust.mobile.isNotBlank()) {
+                        Text(
+                            text = "📞 ${cust.mobile}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Billed: ${DimensionCalculator.formatCurrency(summary.totalBilled)} | Paid: ${DimensionCalculator.formatCurrency(summary.totalPaid)}",
+                        fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                if (cust.mobile.isNotBlank()) {
-                    Text(
-                        text = "📞 ${cust.mobile}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "Due Balance",
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = DimensionCalculator.formatCurrency(balance),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = if (balance > 0) Color(0xFFDC2626) else Color(0xFF16A34A)
+                            )
+                        )
+                    }
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForwardIos,
+                        contentDescription = "Open Ledger",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Billed: ${DimensionCalculator.formatCurrency(summary.totalBilled)} | Paid: ${DimensionCalculator.formatCurrency(summary.totalPaid)}",
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
 
+            Spacer(modifier = Modifier.height(10.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
+            Spacer(modifier = Modifier.height(8.dp))
+
             Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "Due Balance",
-                        fontSize = 10.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = DimensionCalculator.formatCurrency(balance),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = if (balance > 0) Color(0xFFDC2626) else Color(0xFF16A34A)
-                        )
-                    )
+                OutlinedButton(
+                    onClick = onClick,
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Text("Statement / Ledger ➔", fontSize = 11.5.sp)
                 }
-                Spacer(modifier = Modifier.size(8.dp))
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForwardIos,
-                    contentDescription = "Open Ledger",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
-                )
+
+                Button(
+                    onClick = onAddPayment,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Payment,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("+ Add Payment (जमा)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

@@ -725,9 +725,11 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
 
     val selectedLedgerCustomer = MutableStateFlow<CustomerEntity?>(null)
     val ledgerEntries = MutableStateFlow<List<LedgerEntry>>(emptyList())
+    val shouldAutoOpenPaymentDialog = MutableStateFlow(false)
 
-    fun openCustomerLedger(customer: CustomerEntity) {
+    fun openCustomerLedger(customer: CustomerEntity, openPaymentDialog: Boolean = false) {
         selectedLedgerCustomer.value = customer
+        shouldAutoOpenPaymentDialog.value = openPaymentDialog
         viewModelScope.launch {
             repository.getCustomerLedger(customer.id).collect { entries ->
                 ledgerEntries.value = entries
