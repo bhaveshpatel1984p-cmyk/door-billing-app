@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -53,10 +56,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -74,8 +79,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -301,7 +308,7 @@ fun CustomerLedgerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Customer Ledger / Balance", fontWeight = FontWeight.Bold) },
+                title = { Text("Customer Ledger", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(
                         onClick = { viewModel.navigateTo(AppScreen.CUSTOMER_BALANCE) },
@@ -380,7 +387,7 @@ fun CustomerLedgerScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Customer Info Card
+            // Customer Info & Ledger Quick Action Hub Card
             item {
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
@@ -388,205 +395,273 @@ fun CustomerLedgerScreen(
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp)
+                        modifier = Modifier.padding(14.dp)
                     ) {
-                        Text(
-                            text = cust.primaryTitle,
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                        // Title Row with Customer Name and Balance Badge
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = cust.primaryTitle,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 18.sp
+                                ),
+                                modifier = Modifier.weight(1f, fill = false)
                             )
-                        )
-                        if (!cust.subtitle.isNullOrBlank()) {
-                            Text("👤 Contact Person: ${cust.subtitle}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (balance > 0) Color(0xFFFEE2E2) else Color(0xFFDCFCE7),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (balance > 0) Color(0xFFFECACA) else Color(0xFFBBF7D0)
+                                )
+                            ) {
+                                Text(
+                                    text = if (balance > 0) "बाकी: ${DimensionCalculator.formatCurrency(balance)}" else "जमा चुकता ✓",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (balance > 0) Color(0xFFDC2626) else Color(0xFF166534),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
                         }
-                        if (cust.mobile.isNotBlank()) {
-                            Text("📞 Mobile: ${cust.mobile}", style = MaterialTheme.typography.bodyMedium)
-                        }
-                        if (cust.address.isNotBlank()) {
-                            Text("📍 Address: ${cust.address}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (cust.gstNo.isNotBlank()) {
-                            Text("🏛️ GSTIN: ${cust.gstNo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                        // Compact Customer Metadata
+                        if (!cust.subtitle.isNullOrBlank() || cust.mobile.isNotBlank() || cust.address.isNotBlank() || cust.gstNo.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (cust.mobile.isNotBlank()) {
+                                    Text("📞 ${cust.mobile}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                                }
+                                if (!cust.subtitle.isNullOrBlank()) {
+                                    Text("• 👤 ${cust.subtitle}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (cust.gstNo.isNotBlank()) {
+                                    Text("• 🏛️ ${cust.gstNo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            if (cust.address.isNotBlank()) {
+                                Text("📍 ${cust.address}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
 
-                        // Ledger Totals Grid
-                        Row(
+                        // Ledger Totals: Clean 2x2 Grid with balanced styling
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (openingBalanceAmount > 0) {
-                                Column(
-                                    modifier = Modifier.clickable {
-                                        editOpeningBalanceInput = DimensionCalculator.formatDimension(openingBalanceAmount)
-                                        showEditOpeningBalanceDialog = true
-                                    }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // 1. Opening Due
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            editOpeningBalanceInput = DimensionCalculator.formatDimension(openingBalanceAmount)
+                                            showEditOpeningBalanceDialog = true
+                                        },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFFFEDD5),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFED7AA))
                                 ) {
-                                    Text("Opening Due ✎", fontSize = 11.sp, color = Color(0xFFC2410C), fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        DimensionCalculator.formatCurrency(openingBalanceAmount),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = Color(0xFFC2410C)
-                                    )
+                                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                        Text("Opening Due ✎", fontSize = 11.sp, color = Color(0xFFC2410C), fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            DimensionCalculator.formatCurrency(openingBalanceAmount),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 14.5.sp,
+                                            color = Color(0xFF9A3412)
+                                        )
+                                    }
+                                }
+
+                                // 2. Total Invoices
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFE0F2FE),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBAE6FD))
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                        Text("Total Invoices (बिल)", fontSize = 11.sp, color = Color(0xFF0369A1), fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            DimensionCalculator.formatCurrency(totalInvoicesBilled),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 14.5.sp,
+                                            color = Color(0xFF075985)
+                                        )
+                                    }
                                 }
                             }
-                            Column {
-                                Text(if (openingBalanceAmount > 0) "Invoices" else "Total Invoices", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    DimensionCalculator.formatCurrency(totalInvoicesBilled),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = Color(0xFF0369A1)
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Total Received", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    DimensionCalculator.formatCurrency(totalPaid),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = Color(0xFF16A34A)
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("Due Balance", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    DimensionCalculator.formatCurrency(balance),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 16.sp,
-                                    color = if (balance > 0) Color(0xFFDC2626) else Color(0xFF16A34A)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
 
-            // Quick Action Card: + New Bill (नया बिल बनाएं)
-            item {
-                ElevatedCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            viewModel.startNewBill(presetCustomer = cust, origin = AppScreen.CUSTOMER_LEDGER)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // 3. Total Received
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFDCFCE7),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0))
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                        Text("Total Received (जमा)", fontSize = 11.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            DimensionCalculator.formatCurrency(totalPaid),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 14.5.sp,
+                                            color = Color(0xFF166534)
+                                        )
+                                    }
+                                }
+
+                                // 4. Net Due Balance
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (balance > 0) Color(0xFFFEE2E2) else Color(0xFFDCFCE7),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (balance > 0) Color(0xFFFECACA) else Color(0xFFBBF7D0)
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                        Text("Due Balance (बकाया)", fontSize = 11.sp, color = if (balance > 0) Color(0xFFB91C1C) else Color(0xFF15803D), fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            DimensionCalculator.formatCurrency(balance),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 15.sp,
+                                            color = if (balance > 0) Color(0xFFDC2626) else Color(0xFF166534)
+                                        )
+                                    }
+                                }
+                            }
                         }
-                        .testTag("ledger_create_bill_card"),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFF0F9FF))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFFBAE6FD),
-                            modifier = Modifier.size(38.dp)
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+
+                        // Quick Actions Directly Integrated - ZERO Open Space Gap!
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
+                            // Primary Action: + New Bill
+                            Button(
+                                onClick = {
+                                    viewModel.startNewBill(presetCustomer = cust, origin = AppScreen.CUSTOMER_LEDGER)
+                                },
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .testTag("ledger_create_bill_card"),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp)
+                            ) {
+                                Icon(Icons.Default.PostAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("+ New Bill", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            // Payment Received Button
+                            Button(
+                                onClick = {
+                                    payDateMillis = System.currentTimeMillis()
+                                    showPaymentDialog = true
+                                },
+                                modifier = Modifier
+                                    .weight(1.3f)
+                                    .testTag("ledger_add_payment_card_button"),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 9.dp)
+                            ) {
+                                Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("+ जमा करें", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+
+                            // PDF Button
+                            OutlinedButton(
+                                onClick = { showPdfViewerDialog = true },
+                                modifier = Modifier
+                                    .weight(0.9f)
+                                    .testTag("view_ledger_pdf_button"),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 9.dp)
+                            ) {
+                                Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("PDF", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+
+                            // Print Button
+                            OutlinedButton(
+                                onClick = {
+                                    InvoicePrinter.printCustomerLedger(
+                                        context = context,
+                                        customer = cust,
+                                        ledgerEntries = effectiveLedgerEntries,
+                                        totalBilled = totalBilled,
+                                        totalPaid = totalPaid,
+                                        balance = balance,
+                                        company = company,
+                                        periodLabel = dateRangeLabel
+                                    )
+                                },
+                                modifier = Modifier.weight(0.9f),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 9.dp)
+                            ) {
+                                Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF0284C7))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("Print", fontSize = 11.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
+                            }
+
+                            // Share / Remind
+                            IconButton(
+                                onClick = {
+                                    if (balance > 0) {
+                                        ShareHelper.sendPaymentReminderWhatsApp(
+                                            context = context,
+                                            customer = cust,
+                                            balanceDue = balance,
+                                            company = company
+                                        )
+                                    } else {
+                                        showLedgerShareOptions = true
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("remind_payment_button")
+                            ) {
                                 Icon(
-                                    Icons.Default.PostAdd,
-                                    contentDescription = null,
-                                    tint = Color(0xFF0369A1),
-                                    modifier = Modifier.size(22.dp)
+                                    if (balance > 0) Icons.Default.Chat else Icons.Default.Share,
+                                    contentDescription = "Share",
+                                    tint = Color(0xFF25D366),
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "+ New Bill for ${cust.name}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = Color(0xFF0369A1)
-                            )
-                            Text(
-                                text = "इस ग्राहक के लिए नया बिल बनाएं",
-                                fontSize = 11.sp,
-                                color = Color(0xFF0284C7)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Quick Action Buttons Bar: View (PDF) | Print | Remind (WhatsApp) | Share
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { showPdfViewerDialog = true },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("view_ledger_pdf_button"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
-                    ) {
-                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("PDF", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            InvoicePrinter.printCustomerLedger(
-                                context = context,
-                                customer = cust,
-                                ledgerEntries = effectiveLedgerEntries,
-                                totalBilled = totalBilled,
-                                totalPaid = totalPaid,
-                                balance = balance,
-                                company = company,
-                                periodLabel = dateRangeLabel
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
-                    ) {
-                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF0284C7))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Print", fontSize = 12.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
-                    }
-
-                    if (balance > 0) {
-                        Button(
-                            onClick = {
-                                ShareHelper.sendPaymentReminderWhatsApp(
-                                    context = context,
-                                    customer = cust,
-                                    balanceDue = balance,
-                                    company = company
-                                )
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("remind_payment_button"),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
-                        ) {
-                            Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color.White)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("तगादा", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = { showLedgerShareOptions = true },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF16A34A))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Share", fontSize = 12.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1337,9 +1412,30 @@ fun CustomerLedgerScreen(
     if (showPaymentDialog) {
         AlertDialog(
             onDismissRequest = { showPaymentDialog = false },
-            title = { Text("Record Customer Payment") },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .padding(vertical = 16.dp)
+                .imePadding(),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Payment,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Record Customer Payment", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Text(
                         text = "Customer: ${cust.name}",
                         fontWeight = FontWeight.Bold,
@@ -1424,9 +1520,30 @@ fun CustomerLedgerScreen(
                         onValueChange = { payAmountStr = it },
                         label = { Text("Payment Amount (₹) *") },
                         placeholder = { Text("e.g. 5000") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Next
+                        ),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        textStyle = TextStyle(
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary,
+                            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("payment_amount_input")
                     )
 
                     Text("Payment Mode", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -1446,17 +1563,67 @@ fun CustomerLedgerScreen(
                     OutlinedTextField(
                         value = payRef,
                         onValueChange = { payRef = it },
-                        label = { Text("Reference / UTR / Cheque No (Optional)") },
+                        label = { Text("Reference / UTR / Cheque No") },
+                        placeholder = { Text("Enter UTR, txn or cheque number...") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        textStyle = TextStyle(
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary,
+                            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Next
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("payment_reference_input")
                     )
 
                     OutlinedTextField(
                         value = payNotes,
                         onValueChange = { payNotes = it },
-                        label = { Text("Notes (Optional)") },
+                        label = { Text("Notes / Remarks (Optional)") },
+                        placeholder = { Text("Add any remarks or notes...") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        textStyle = TextStyle(
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary,
+                            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Done
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("payment_notes_input")
                     )
                 }
             },
@@ -1978,6 +2145,11 @@ fun CustomerLedgerScreen(
     if (showEditOpeningBalanceDialog) {
         AlertDialog(
             onDismissRequest = { showEditOpeningBalanceDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .padding(vertical = 16.dp)
+                .imePadding(),
             title = { Text("Customer Opening / Prior Due", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1991,8 +2163,27 @@ fun CustomerLedgerScreen(
                         onValueChange = { editOpeningBalanceInput = it },
                         label = { Text("Opening Due Balance (₹)") },
                         placeholder = { Text("0.00") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Done
+                        ),
                         singleLine = true,
+                        textStyle = TextStyle(
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary,
+                            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -2035,6 +2226,11 @@ fun EditCustomerPaymentDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier
+            .fillMaxWidth(0.95f)
+            .padding(vertical = 16.dp)
+            .imePadding(),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -2048,7 +2244,12 @@ fun EditCustomerPaymentDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
                     text = "Customer: $customerName",
                     fontWeight = FontWeight.Bold,
@@ -2107,8 +2308,27 @@ fun EditCustomerPaymentDialog(
                     value = editAmountStr,
                     onValueChange = { editAmountStr = it },
                     label = { Text("Payment Amount (₹) *") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next
+                    ),
                     singleLine = true,
+                    textStyle = TextStyle(
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -2129,16 +2349,62 @@ fun EditCustomerPaymentDialog(
                 OutlinedTextField(
                     value = editRef,
                     onValueChange = { editRef = it },
-                    label = { Text("Reference / UTR / Cheque No (Optional)") },
+                    label = { Text("Reference / UTR / Cheque No") },
+                    placeholder = { Text("Enter UTR, txn or cheque number...") },
                     singleLine = true,
+                    textStyle = TextStyle(
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Next
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
                     value = editNotes,
                     onValueChange = { editNotes = it },
-                    label = { Text("Notes (Optional)") },
+                    label = { Text("Notes / Remarks (Optional)") },
+                    placeholder = { Text("Add any remarks or notes...") },
                     singleLine = true,
+                    textStyle = TextStyle(
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Done
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
