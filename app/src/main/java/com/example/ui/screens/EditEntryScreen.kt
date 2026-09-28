@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.db.BillWithItems
+import com.example.data.db.CustomerEntity
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
 import com.example.util.DimensionCalculator
@@ -72,6 +74,7 @@ fun EditEntryScreen(
 ) {
     val context = LocalContext.current
     val allBills by viewModel.allBills.collectAsStateWithLifecycle()
+    val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
     val company by viewModel.companyProfile.collectAsStateWithLifecycle()
 
     var searchQuery by remember { mutableStateOf("") }
@@ -343,6 +346,20 @@ fun EditEntryScreen(
                                     Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("Edit", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                }
+
+                                // Customer Ledger Button
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.openCustomerLedgerById(bill.customerId)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(Icons.Default.AccountBalance, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF0369A1))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Ledger", fontSize = 12.sp, color = Color(0xFF0369A1))
                                 }
 
                                 // Print Quick Button

@@ -50,7 +50,8 @@ fun ShareOptionsDialog(
     onSharePdf: () -> Unit,
     onShareText: (() -> Unit)? = null,
     onPrint: (() -> Unit)? = null,
-    onDeliveryChallan: (() -> Unit)? = null
+    onDeliveryChallan: (() -> Unit)? = null,
+    onExportCsv: (() -> Unit)? = null
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -186,6 +187,22 @@ fun ShareOptionsDialog(
                         onClick = {
                             onDismiss()
                             onShareText()
+                        }
+                    )
+                }
+
+                // Option 7: Excel CSV Export (if available)
+                if (onExportCsv != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    ShareOptionRow(
+                        icon = Icons.Default.Description,
+                        iconBgColor = Color(0xFF0D9488),
+                        title = "Export to Excel (CSV)",
+                        subtitle = "Open statement in Microsoft Excel or Google Sheets",
+                        testTag = "share_option_csv",
+                        onClick = {
+                            onDismiss()
+                            onExportCsv()
                         }
                     )
                 }

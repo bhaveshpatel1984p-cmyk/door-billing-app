@@ -185,14 +185,17 @@ sealed class LedgerEntry {
     abstract val description: String
     abstract val debitAmount: Double // Bill amount or opening balance (increases balance)
     abstract val creditAmount: Double // Payment amount (reduces balance)
+    open val runningBalance: Double = 0.0
 
     data class OpeningBalanceEntry(
         override val id: Long = -1L,
         override val dateMillis: Long,
         val openingAmount: Double,
-        val customerName: String = ""
+        val customerName: String = "",
+        val customDescription: String? = null,
+        override val runningBalance: Double = openingAmount
     ) : LedgerEntry() {
-        override val description: String = "Opening Balance / Previous Due Balance"
+        override val description: String = customDescription ?: "Opening Balance / Previous Due Balance"
         override val debitAmount: Double = openingAmount
         override val creditAmount: Double = 0.0
     }
@@ -204,17 +207,23 @@ sealed class LedgerEntry {
         val grandTotal: Double,
         val itemsCount: Int,
         val totalSqFt: Double,
-        val billWithItems: BillWithItems
+        val billWithItems: BillWithItems,
+        override val runningBalance: Double = 0.0
     ) : LedgerEntry() {
-        override val description: String = "Invoice #$invoiceNo ($itemsCount items, ${String.format(java.util.Locale.US, "%.2f", totalSqFt)} Sq.Ft)"
-        override val debitAmount: Double = grandTotal
+        override val description: String = if (billWithItems.bill.isQuotation) {
+            "Estimate #$invoiceNo ($itemsCount items, ${String.format(java.util.Locale.US, "%.2f", totalSqFt)} Sq.Ft)"
+        } else {
+            "Invoice #$invoiceNo ($itemsCount items, ${String.format(java.util.Locale.US, "%.2f", totalSqFt)} Sq.Ft)"
+        }
+        override val debitAmount: Double = if (billWithItems.bill.isQuotation) 0.0 else grandTotal
         override val creditAmount: Double = 0.0
     }
 
     data class PaymentRecord(
         override val id: Long,
         override val dateMillis: Long,
-        val payment: PaymentEntity
+        val payment: PaymentEntity,
+        override val runningBalance: Double = 0.0
     ) : LedgerEntry() {
         override val description: String = "Payment (${payment.paymentMode}${if (payment.referenceNo.isNotBlank()) " - Ref: " + payment.referenceNo else ""})"
         override val debitAmount: Double = 0.0

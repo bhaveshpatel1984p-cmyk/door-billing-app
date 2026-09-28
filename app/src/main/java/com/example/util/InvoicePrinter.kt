@@ -38,9 +38,10 @@ object InvoicePrinter {
         totalBilled: Double,
         totalPaid: Double,
         balance: Double,
-        company: CompanyProfileEntity
+        company: CompanyProfileEntity,
+        periodLabel: String? = null
     ) {
-        val htmlContent = generateLedgerHtml(customer, ledgerEntries, totalBilled, totalPaid, balance, company)
+        val htmlContent = generateLedgerHtml(customer, ledgerEntries, totalBilled, totalPaid, balance, company, periodLabel)
         printHtml(context, htmlContent, "Ledger_${customer.name.replace(" ", "_")}")
     }
 
@@ -452,7 +453,8 @@ object InvoicePrinter {
         totalBilled: Double,
         totalPaid: Double,
         balance: Double,
-        company: CompanyProfileEntity
+        company: CompanyProfileEntity,
+        periodLabel: String? = null
     ): String {
         var runningBal = 0.0
         val rows = ledgerEntries.joinToString("") { entry ->
@@ -512,6 +514,7 @@ object InvoicePrinter {
                     <div style="font-size:13px; font-weight:bold; margin-top:6px; letter-spacing:1px; background-color:rgba(255,255,255,0.2); padding:3px 0; border-radius:3px;">
                         CUSTOMER ACCOUNT STATEMENT / LEDGER
                     </div>
+                    ${if (!periodLabel.isNullOrBlank()) """<div style="font-size:11.5px; font-weight:bold; margin-top:4px; color:#fef08a;">📅 Statement Period: $periodLabel</div>""" else ""}
                 </div>
 
                 <table class="info-table">
@@ -525,6 +528,7 @@ object InvoicePrinter {
                         </td>
                         <td style="width:40%; text-align:right; border-left:1px solid #ddd;">
                             <div><strong>Statement Date:</strong> ${DimensionCalculator.formatDate(System.currentTimeMillis())}</div>
+                            ${if (!periodLabel.isNullOrBlank()) """<div style="color:#0369A1; font-weight:bold; margin-top:2px;"><strong>Period:</strong> $periodLabel</div>""" else ""}
                             <div style="margin-top:4px;"><strong>Total Bills:</strong> ₹${String.format(java.util.Locale.US, "%.2f", totalBilled)}</div>
                             <div><strong>Total Received:</strong> ₹${String.format(java.util.Locale.US, "%.2f", totalPaid)}</div>
                             <div style="font-size:13px; font-weight:bold; color:${if (balance > 0) "#dc2626" else "#16a34a"}; margin-top:4px;">

@@ -10,6 +10,10 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +42,7 @@ fun PaymentReceiptDialog(
 ) {
     val context = LocalContext.current
     val rcptNo = "REC-${payment.id.toString().padStart(4, '0')}"
+    var targetMobile by remember { mutableStateOf(customer.mobile) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -45,7 +50,7 @@ fun PaymentReceiptDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                .fillMaxWidth(0.94f)
                 .wrapContentHeight(),
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -55,7 +60,7 @@ fun PaymentReceiptDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // Header
                 Row(
@@ -71,16 +76,16 @@ fun PaymentReceiptDialog(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
                             tint = Color(0xFF16A34A),
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                         Column {
                             Text(
-                                "Payment Voucher / Receipt",
+                                "Payment Receipt / जमा रसीद",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                "Voucher #$rcptNo | ${DimensionCalculator.formatDate(payment.dateMillis)}",
+                                "Voucher #$rcptNo • ${DimensionCalculator.formatDate(payment.dateMillis)}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -100,11 +105,11 @@ fun PaymentReceiptDialog(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            "AMOUNT RECEIVED",
+                            "AMOUNT RECEIVED (जमा राशि)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF15803D),
@@ -117,7 +122,7 @@ fun PaymentReceiptDialog(
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF166534)
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(2.dp))
                         Text(
                             DimensionCalculator.convertToIndianCurrencyWords(payment.amount),
                             fontSize = 11.sp,
@@ -133,20 +138,14 @@ fun PaymentReceiptDialog(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Received From:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Customer:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 customer.firmName.ifBlank { customer.name },
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                        }
-                        if (customer.mobile.isNotBlank()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Contact:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(customer.mobile, fontSize = 12.sp)
-                            }
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Payment Mode:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -173,7 +172,7 @@ fun PaymentReceiptDialog(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Previous Due Balance:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
@@ -183,7 +182,7 @@ fun PaymentReceiptDialog(
                             )
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Amount Paid Now:", fontSize = 12.sp, color = Color(0xFF15803D))
+                            Text("Amount Received Now:", fontSize = 12.sp, color = Color(0xFF15803D))
                             Text(
                                 "- ₹ " + String.format(Locale.US, "%,.2f", payment.amount),
                                 fontSize = 12.sp,
@@ -204,46 +203,100 @@ fun PaymentReceiptDialog(
                     }
                 }
 
-                // Actions
+                // Mobile number field if customer doesn't have one saved
+                if (customer.mobile.isBlank()) {
+                    OutlinedTextField(
+                        value = targetMobile,
+                        onValueChange = { targetMobile = it },
+                        label = { Text("Customer WhatsApp / Mobile No") },
+                        placeholder = { Text("e.g. 9876543210") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // WhatsApp Primary Receipt Action (Prominent)
+                Button(
+                    onClick = {
+                        val effMobile = targetMobile.ifBlank { customer.mobile }
+                        ShareHelper.sendPaymentReceiptWhatsAppDirect(
+                            context = context,
+                            payment = payment,
+                            customerName = customer.name,
+                            customerMobile = effMobile,
+                            company = company,
+                            previousBalance = previousBalance,
+                            remainingBalance = remainingBalance
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
+                ) {
+                    Text("💬 Send Receipt on WhatsApp (रसीद भेजें)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                // Secondary Action Buttons: WhatsApp PDF | Print | Share
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                    OutlinedButton(
                         onClick = {
-                            InvoicePrinter.printPaymentReceipt(context, payment, customer.name, customer.mobile, company, previousBalance, remainingBalance)
+                            val effMobile = targetMobile.ifBlank { customer.mobile }
+                            ShareHelper.sharePaymentReceiptWhatsApp(
+                                context = context,
+                                payment = payment,
+                                customerName = customer.name,
+                                customerMobile = effMobile,
+                                company = company,
+                                previousBalance = previousBalance,
+                                remainingBalance = remainingBalance
+                            )
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Print", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            ShareHelper.sharePaymentReceiptWhatsApp(context, payment, customer.name, customer.mobile, company, previousBalance, remainingBalance)
-                        },
-                        modifier = Modifier.weight(1.1f),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
-                    ) {
-                        Text("💬 WhatsApp", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("📄 WhatsApp PDF", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF16A34A))
                     }
 
                     OutlinedButton(
                         onClick = {
-                            ShareHelper.sharePaymentReceiptGeneral(context, payment, customer.name, customer.mobile, company, previousBalance, remainingBalance)
+                            InvoicePrinter.printPaymentReceipt(context, payment, customer.name, customer.mobile, company, previousBalance, remainingBalance)
                         },
                         modifier = Modifier.weight(0.9f),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Share", fontSize = 12.5.sp)
+                        Text("Print", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                     }
+
+                    OutlinedButton(
+                        onClick = {
+                            val effMobile = targetMobile.ifBlank { customer.mobile }
+                            ShareHelper.sharePaymentReceiptGeneral(context, payment, customer.name, effMobile, company, previousBalance, remainingBalance)
+                        },
+                        modifier = Modifier.weight(0.8f),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Share", fontSize = 11.5.sp)
+                    }
+                }
+
+                // Dismiss / Done button
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text("✓ Done / Close", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -23,14 +25,17 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Payment
+import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -40,6 +45,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -49,6 +55,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -79,8 +86,24 @@ import com.example.data.db.PaymentEntity
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.DoorBillingViewModel
 import com.example.util.DimensionCalculator
+import com.example.util.CsvExportHelper
 import com.example.util.InvoicePrinter
 import com.example.util.ShareHelper
+
+enum class LedgerDateRange(val title: String) {
+    ALL_TIME("All Time"),
+    THIS_MONTH("This Month"),
+    LAST_MONTH("Last Month"),
+    LAST_3_MONTHS("3 Months"),
+    CUSTOM("Custom Date")
+}
+
+data class LedgerPeriodSummary(
+    val entries: List<LedgerEntry>,
+    val billed: Double,
+    val paid: Double,
+    val balance: Double
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,6 +134,144 @@ fun CustomerLedgerScreen(
     var selectedBillForViewModal by remember { mutableStateOf<BillWithItems?>(null) }
     var showEditOpeningBalanceDialog by remember { mutableStateOf(false) }
     var editOpeningBalanceInput by remember { mutableStateOf("") }
+    var sortNewestFirst by remember { mutableStateOf(true) }
+    var filterType by remember { mutableStateOf("ALL") } // "ALL", "INVOICES", "PAYMENTS"
+    var dateRangeMode by remember { mutableStateOf(LedgerDateRange.ALL_TIME) }
+    var customFromMillis by remember { mutableStateOf(System.currentTimeMillis() - 30L * 24 * 3600 * 1000) }
+    var customToMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var showCustomDateDialog by remember { mutableStateOf(false) }
+
+    val (rangeStartMillis, rangeEndMillis, dateRangeLabel) = remember(dateRangeMode, customFromMillis, customToMillis) {
+        when (dateRangeMode) {
+            LedgerDateRange.ALL_TIME -> Triple(null, null, null)
+            LedgerDateRange.THIS_MONTH -> {
+                val cal = java.util.Calendar.getInstance()
+                cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                cal.set(java.util.Calendar.MINUTE, 0)
+                cal.set(java.util.Calendar.SECOND, 0)
+                cal.set(java.util.Calendar.MILLISECOND, 0)
+                val start = cal.timeInMillis
+                val monthFormat = java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.US).format(java.util.Date())
+                Triple(start, Long.MAX_VALUE, "This Month ($monthFormat)")
+            }
+            LedgerDateRange.LAST_MONTH -> {
+                val cal = java.util.Calendar.getInstance()
+                cal.add(java.util.Calendar.MONTH, -1)
+                cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                cal.set(java.util.Calendar.MINUTE, 0)
+                cal.set(java.util.Calendar.SECOND, 0)
+                cal.set(java.util.Calendar.MILLISECOND, 0)
+                val start = cal.timeInMillis
+                val maxDay = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                cal.set(java.util.Calendar.DAY_OF_MONTH, maxDay)
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
+                cal.set(java.util.Calendar.MINUTE, 59)
+                cal.set(java.util.Calendar.SECOND, 59)
+                cal.set(java.util.Calendar.MILLISECOND, 999)
+                val end = cal.timeInMillis
+                val monthFormat = java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.US).format(cal.time)
+                Triple(start, end, "Last Month ($monthFormat)")
+            }
+            LedgerDateRange.LAST_3_MONTHS -> {
+                val cal = java.util.Calendar.getInstance()
+                cal.add(java.util.Calendar.MONTH, -3)
+                cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                cal.set(java.util.Calendar.MINUTE, 0)
+                cal.set(java.util.Calendar.SECOND, 0)
+                cal.set(java.util.Calendar.MILLISECOND, 0)
+                val start = cal.timeInMillis
+                Triple(start, Long.MAX_VALUE, "Last 3 Months")
+            }
+            LedgerDateRange.CUSTOM -> {
+                val calStart = java.util.Calendar.getInstance().apply {
+                    timeInMillis = customFromMillis
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }
+                val calEnd = java.util.Calendar.getInstance().apply {
+                    timeInMillis = customToMillis
+                    set(java.util.Calendar.HOUR_OF_DAY, 23)
+                    set(java.util.Calendar.MINUTE, 59)
+                    set(java.util.Calendar.SECOND, 59)
+                    set(java.util.Calendar.MILLISECOND, 999)
+                }
+                val start = calStart.timeInMillis
+                val end = calEnd.timeInMillis
+                val label = "${DimensionCalculator.formatDate(start)} to ${DimensionCalculator.formatDate(end)}"
+                Triple(start, end, label)
+            }
+        }
+    }
+
+    val periodSummary = remember(ledgerEntries, rangeStartMillis, rangeEndMillis) {
+        if (rangeStartMillis == null) {
+            val openingBal = ledgerEntries.filterIsInstance<LedgerEntry.OpeningBalanceEntry>().sumOf { it.openingAmount }
+            val invoicesBilled = ledgerEntries.filterIsInstance<LedgerEntry.BillEntry>().filter { !it.billWithItems.bill.isQuotation }.sumOf { it.grandTotal }
+            val billed = openingBal + invoicesBilled
+            val paid = ledgerEntries.filterIsInstance<LedgerEntry.PaymentRecord>().sumOf { it.payment.amount }
+            val bal = maxOf(0.0, billed - paid)
+            LedgerPeriodSummary(ledgerEntries, billed, paid, bal)
+        } else {
+            val startM = rangeStartMillis
+            val endM = rangeEndMillis ?: Long.MAX_VALUE
+
+            val priorOpening = ledgerEntries.filterIsInstance<LedgerEntry.OpeningBalanceEntry>()
+                .filter { it.dateMillis < startM }
+                .sumOf { it.openingAmount }
+            val priorBilled = ledgerEntries.filterIsInstance<LedgerEntry.BillEntry>()
+                .filter { it.dateMillis < startM && !it.billWithItems.bill.isQuotation }
+                .sumOf { it.grandTotal }
+            val priorPaid = ledgerEntries.filterIsInstance<LedgerEntry.PaymentRecord>()
+                .filter { it.dateMillis < startM }
+                .sumOf { it.payment.amount }
+            val priorBalanceDue = (priorOpening + priorBilled) - priorPaid
+
+            val inRangeEntries = ledgerEntries.filter { it.dateMillis in startM..endM }
+
+            val list = mutableListOf<LedgerEntry>()
+            if (priorBalanceDue != 0.0) {
+                list.add(
+                    LedgerEntry.OpeningBalanceEntry(
+                        openingAmount = priorBalanceDue,
+                        dateMillis = startM,
+                        customDescription = "Balance B/F as on ${DimensionCalculator.formatDate(startM)} (आरंभिक शेष)"
+                    )
+                )
+            }
+            list.addAll(inRangeEntries.filter { it !is LedgerEntry.OpeningBalanceEntry })
+
+            val inRangeInvoices = inRangeEntries.filterIsInstance<LedgerEntry.BillEntry>()
+                .filter { !it.billWithItems.bill.isQuotation }
+                .sumOf { it.grandTotal }
+            val inRangePaid = inRangeEntries.filterIsInstance<LedgerEntry.PaymentRecord>()
+                .sumOf { it.payment.amount }
+
+            val totalB = maxOf(0.0, priorBalanceDue) + inRangeInvoices
+            val totalP = inRangePaid + if (priorBalanceDue < 0.0) (-priorBalanceDue) else 0.0
+            val bal = maxOf(0.0, totalB - totalP)
+
+            LedgerPeriodSummary(list, totalB, totalP, bal)
+        }
+    }
+
+    val effectiveLedgerEntries = periodSummary.entries
+    val totalBilled = periodSummary.billed
+    val totalPaid = periodSummary.paid
+    val balance = periodSummary.balance
+
+    val displayedEntries = remember(effectiveLedgerEntries, sortNewestFirst, filterType) {
+        val filtered = when (filterType) {
+            "INVOICES" -> effectiveLedgerEntries.filter { it is LedgerEntry.BillEntry || it is LedgerEntry.OpeningBalanceEntry }
+            "PAYMENTS" -> effectiveLedgerEntries.filterIsInstance<LedgerEntry.PaymentRecord>()
+            else -> effectiveLedgerEntries
+        }
+        if (sortNewestFirst) filtered.reversed() else filtered
+    }
 
     LaunchedEffect(autoOpenPayment) {
         if (autoOpenPayment) {
@@ -120,17 +281,22 @@ fun CustomerLedgerScreen(
         }
     }
 
+    LaunchedEffect(customer) {
+        if (customer == null && viewModel.selectedLedgerCustomerId.value == null) {
+            viewModel.navigateTo(AppScreen.CUSTOMER_BALANCE)
+        }
+    }
+
     if (customer == null) {
-        viewModel.navigateTo(AppScreen.CUSTOMER_BALANCE)
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
         return
     }
 
     val cust = customer!!
-    val openingBalanceAmount = ledgerEntries.filterIsInstance<LedgerEntry.OpeningBalanceEntry>().sumOf { it.openingAmount }
-    val totalInvoicesBilled = ledgerEntries.filterIsInstance<LedgerEntry.BillEntry>().sumOf { it.grandTotal }
-    val totalBilled = openingBalanceAmount + totalInvoicesBilled
-    val totalPaid = ledgerEntries.filterIsInstance<LedgerEntry.PaymentRecord>().sumOf { it.payment.amount }
-    val balance = totalBilled - totalPaid
+    val openingBalanceAmount = effectiveLedgerEntries.filterIsInstance<LedgerEntry.OpeningBalanceEntry>().sumOf { it.openingAmount }
+    val totalInvoicesBilled = effectiveLedgerEntries.filterIsInstance<LedgerEntry.BillEntry>().filter { !it.billWithItems.bill.isQuotation }.sumOf { it.grandTotal }
 
     Scaffold(
         topBar = {
@@ -145,6 +311,16 @@ fun CustomerLedgerScreen(
                     }
                 },
                 actions = {
+                    // Quick Create Bill for this Customer
+                    IconButton(
+                        onClick = {
+                            viewModel.startNewBill(presetCustomer = cust, origin = AppScreen.CUSTOMER_LEDGER)
+                        },
+                        modifier = Modifier.testTag("topbar_create_bill_button")
+                    ) {
+                        Icon(Icons.Default.PostAdd, contentDescription = "Create Bill for Customer", tint = Color.White)
+                    }
+
                     // Quick Add Payment in TopBar
                     IconButton(
                         onClick = {
@@ -169,11 +345,12 @@ fun CustomerLedgerScreen(
                             InvoicePrinter.printCustomerLedger(
                                 context = context,
                                 customer = cust,
-                                ledgerEntries = ledgerEntries,
+                                ledgerEntries = effectiveLedgerEntries,
                                 totalBilled = totalBilled,
                                 totalPaid = totalPaid,
                                 balance = balance,
-                                company = company
+                                company = company,
+                                periodLabel = dateRangeLabel
                             )
                         }
                     ) {
@@ -192,19 +369,6 @@ fun CustomerLedgerScreen(
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White
                 )
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    payDateMillis = System.currentTimeMillis()
-                    showPaymentDialog = true
-                },
-                icon = { Icon(Icons.Default.Payment, contentDescription = null) },
-                text = { Text("+ Add Payment (जमा)", fontWeight = FontWeight.Bold, fontSize = 14.sp) },
-                containerColor = Color(0xFF16A34A),
-                contentColor = Color.White,
-                modifier = Modifier.testTag("fab_add_payment")
             )
         }
     ) { paddingValues ->
@@ -301,75 +465,55 @@ fun CustomerLedgerScreen(
                 }
             }
 
-            // Prominent Customer Payment (जमा) Action Banner
+            // Quick Action Card: + New Bill (नया बिल बनाएं)
             item {
                 ElevatedCard(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("customer_payment_action_card"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFF0FDF4))
+                        .clickable {
+                            viewModel.startNewBill(presetCustomer = cust, origin = AppScreen.CUSTOMER_LEDGER)
+                        }
+                        .testTag("ledger_create_bill_card"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFF0F9FF))
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFBAE6FD),
+                            modifier = Modifier.size(38.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFFDCFCE7),
-                                modifier = Modifier.size(42.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Default.Payment,
-                                        contentDescription = null,
-                                        tint = Color(0xFF16A34A),
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Customer Payment (पेमेंट जमा)",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.5.sp,
-                                    color = Color(0xFF166534)
-                                )
-                                Text(
-                                    text = "Record Cash, UPI, Cheque or Bank payment",
-                                    fontSize = 11.5.sp,
-                                    color = Color(0xFF15803D)
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.PostAdd,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0369A1),
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                payDateMillis = System.currentTimeMillis()
-                                showPaymentDialog = true
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                            modifier = Modifier.testTag("record_payment_button")
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("+ Add Payment", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "+ New Bill for ${cust.name}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = Color(0xFF0369A1)
+                            )
+                            Text(
+                                text = "इस ग्राहक के लिए नया बिल बनाएं",
+                                fontSize = 11.sp,
+                                color = Color(0xFF0284C7)
+                            )
                         }
                     }
                 }
             }
 
-            // Quick Action Buttons Bar: View (PDF) | Print | WhatsApp
+            // Quick Action Buttons Bar: View (PDF) | Print | Remind (WhatsApp) | Share
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -382,11 +526,11 @@ fun CustomerLedgerScreen(
                             .testTag("view_ledger_pdf_button"),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("View PDF", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        Text("PDF", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
                     OutlinedButton(
@@ -394,11 +538,12 @@ fun CustomerLedgerScreen(
                             InvoicePrinter.printCustomerLedger(
                                 context = context,
                                 customer = cust,
-                                ledgerEntries = ledgerEntries,
+                                ledgerEntries = effectiveLedgerEntries,
                                 totalBilled = totalBilled,
                                 totalPaid = totalPaid,
                                 balance = balance,
-                                company = company
+                                company = company,
+                                periodLabel = dateRangeLabel
                             )
                         },
                         modifier = Modifier.weight(1f),
@@ -407,7 +552,30 @@ fun CustomerLedgerScreen(
                     ) {
                         Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF0284C7))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Print", fontSize = 12.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
+                        Text("Print", fontSize = 12.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
+                    }
+
+                    if (balance > 0) {
+                        Button(
+                            onClick = {
+                                ShareHelper.sendPaymentReminderWhatsApp(
+                                    context = context,
+                                    customer = cust,
+                                    balanceDue = balance,
+                                    company = company
+                                )
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("remind_payment_button"),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color.White)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("तगादा", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
 
                     OutlinedButton(
@@ -416,14 +584,161 @@ fun CustomerLedgerScreen(
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF25D366))
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF16A34A))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Share", fontSize = 12.5.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.SemiBold)
+                        Text("Share", fontSize = 12.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
 
-            // Transaction History Header
+            // 📅 Date Range Filter in Ledger (तारीख अनुसार लेजर स्टेटमेंट)
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (dateRangeMode != LedgerDateRange.ALL_TIME)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.DateRange,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    "STATEMENT PERIOD (अवधि अनुसार लेजर)",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            if (dateRangeMode != LedgerDateRange.ALL_TIME) {
+                                TextButton(
+                                    onClick = { dateRangeMode = LedgerDateRange.ALL_TIME },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(Modifier.width(2.dp))
+                                    Text(
+                                        "All Time (हटाएं)",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.error,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        // Preset filter chips scrollable row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            FilterChip(
+                                selected = dateRangeMode == LedgerDateRange.ALL_TIME,
+                                onClick = { dateRangeMode = LedgerDateRange.ALL_TIME },
+                                label = { Text("All Time", fontSize = 11.sp) }
+                            )
+                            FilterChip(
+                                selected = dateRangeMode == LedgerDateRange.THIS_MONTH,
+                                onClick = { dateRangeMode = LedgerDateRange.THIS_MONTH },
+                                label = { Text("This Month (इस माह)", fontSize = 11.sp) }
+                            )
+                            FilterChip(
+                                selected = dateRangeMode == LedgerDateRange.LAST_MONTH,
+                                onClick = { dateRangeMode = LedgerDateRange.LAST_MONTH },
+                                label = { Text("Last Month (पिछला)", fontSize = 11.sp) }
+                            )
+                            FilterChip(
+                                selected = dateRangeMode == LedgerDateRange.LAST_3_MONTHS,
+                                onClick = { dateRangeMode = LedgerDateRange.LAST_3_MONTHS },
+                                label = { Text("Last 3 Months (3 माह)", fontSize = 11.sp) }
+                            )
+                            FilterChip(
+                                selected = dateRangeMode == LedgerDateRange.CUSTOM,
+                                onClick = { showCustomDateDialog = true },
+                                label = {
+                                    Text(
+                                        if (dateRangeMode == LedgerDateRange.CUSTOM && dateRangeLabel != null)
+                                            "📅 $dateRangeLabel ✎"
+                                        else
+                                            "📅 Custom Date ✎",
+                                        fontSize = 11.sp,
+                                        fontWeight = if (dateRangeMode == LedgerDateRange.CUSTOM) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            )
+                        }
+
+                        // Banner when filtered
+                        if (dateRangeMode != LedgerDateRange.ALL_TIME && dateRangeLabel != null) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                tonalElevation = 1.dp,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "📅 $dateRangeLabel",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "PDF & Print will only include this period (${effectiveLedgerEntries.size} entries)",
+                                            fontSize = 10.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = { showCustomDateDialog = true },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(26.dp)
+                                    ) {
+                                        Text("Change", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Transaction History Header with Sort Toggle
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -431,24 +746,69 @@ fun CustomerLedgerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "TRANSACTION ENTRIES (${ledgerEntries.size})",
+                        text = "TRANSACTIONS (${effectiveLedgerEntries.size})",
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
-                    if (openingBalanceAmount <= 0.0) {
-                        TextButton(
-                            onClick = {
-                                editOpeningBalanceInput = ""
-                                showEditOpeningBalanceDialog = true
-                            },
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (openingBalanceAmount <= 0.0) {
+                            TextButton(
+                                onClick = {
+                                    editOpeningBalanceInput = ""
+                                    showEditOpeningBalanceDialog = true
+                                },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("+ Set Opening", fontSize = 11.sp, color = Color(0xFFC2410C), fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(Modifier.width(4.dp))
+                        }
+
+                        // Sort toggle button
+                        OutlinedButton(
+                            onClick = { sortNewestFirst = !sortNewestFirst },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("+ Set Opening Due", fontSize = 11.5.sp, color = Color(0xFFC2410C), fontWeight = FontWeight.SemiBold)
+                            Icon(
+                                Icons.Default.SwapVert,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(3.dp))
+                            Text(if (sortNewestFirst) "Newest First" else "Oldest First", fontSize = 11.sp)
                         }
                     }
+                }
+            }
+
+            // Filter Chips Row
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = filterType == "ALL",
+                        onClick = { filterType = "ALL" },
+                        label = { Text("All (${effectiveLedgerEntries.size})", fontSize = 11.5.sp) }
+                    )
+                    val billsCount = effectiveLedgerEntries.count { it is LedgerEntry.BillEntry || it is LedgerEntry.OpeningBalanceEntry }
+                    FilterChip(
+                        selected = filterType == "INVOICES",
+                        onClick = { filterType = "INVOICES" },
+                        label = { Text("Bills ($billsCount)", fontSize = 11.5.sp) }
+                    )
+                    val paymentsCount = effectiveLedgerEntries.count { it is LedgerEntry.PaymentRecord }
+                    FilterChip(
+                        selected = filterType == "PAYMENTS",
+                        onClick = { filterType = "PAYMENTS" },
+                        label = { Text("Payments ($paymentsCount)", fontSize = 11.5.sp) }
+                    )
                 }
             }
 
@@ -472,21 +832,21 @@ fun CustomerLedgerScreen(
                             )
                             Button(
                                 onClick = {
-                                    payDateMillis = System.currentTimeMillis()
-                                    showPaymentDialog = true
+                                    viewModel.startNewBill(presetCustomer = cust, origin = AppScreen.CUSTOMER_LEDGER)
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                                shape = RoundedCornerShape(10.dp)
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.PostAdd, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("+ Add Customer Payment (पेमेंट जमा करें)", fontWeight = FontWeight.Bold)
+                                Text("+ New Bill for ${cust.name}", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
                         }
                     }
                 }
             } else {
-                items(ledgerEntries) { entry ->
+                items(displayedEntries, key = { entry -> "${entry::class.simpleName}_${entry.id}_${entry.dateMillis}" }) { entry ->
                     when (entry) {
                         is LedgerEntry.OpeningBalanceEntry -> {
                             ElevatedCard(
@@ -543,6 +903,19 @@ fun CustomerLedgerScreen(
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFFFFEDD5),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Bal: ${DimensionCalculator.formatCurrency(entry.runningBalance)}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFC2410C),
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
                                         }
                                     }
 
@@ -608,11 +981,28 @@ fun CustomerLedgerScreen(
                                         Spacer(modifier = Modifier.width(10.dp))
 
                                         Column {
-                                            Text(
-                                                text = "Invoice #${entry.invoiceNo}",
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp
-                                            )
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = if (entry.billWithItems.bill.isQuotation) "Estimate #${entry.invoiceNo}" else "Invoice #${entry.invoiceNo}",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp
+                                                )
+                                                if (entry.billWithItems.bill.isQuotation) {
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = Color(0xFFFEF3C7)
+                                                    ) {
+                                                        Text(
+                                                            "ESTIMATE",
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFFB45309),
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
                                             Text(
                                                 text = "${DimensionCalculator.formatDate(entry.dateMillis)} • ${entry.itemsCount} items (${String.format(java.util.Locale.US, "%.1f", entry.totalSqFt)} Sq.Ft)",
                                                 fontSize = 11.sp,
@@ -631,16 +1021,35 @@ fun CustomerLedgerScreen(
 
                                     Column(horizontalAlignment = Alignment.End) {
                                         Text(
-                                            text = "+ " + DimensionCalculator.formatCurrency(entry.debitAmount),
+                                            text = if (entry.billWithItems.bill.isQuotation) {
+                                                DimensionCalculator.formatCurrency(entry.grandTotal)
+                                            } else {
+                                                "+ " + DimensionCalculator.formatCurrency(entry.debitAmount)
+                                            },
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 14.sp,
-                                            color = Color(0xFF0369A1)
+                                            color = if (entry.billWithItems.bill.isQuotation) Color(0xFFD97706) else Color(0xFF0369A1)
                                         )
                                         Text(
-                                            text = "Billed (Debit)",
+                                            text = if (entry.billWithItems.bill.isQuotation) "Quote Amount" else "Billed (Debit)",
                                             fontSize = 10.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        if (!entry.billWithItems.bill.isQuotation) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFFE0F2FE),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Bal: ${DimensionCalculator.formatCurrency(entry.runningBalance)}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF0369A1),
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
@@ -654,6 +1063,33 @@ fun CustomerLedgerScreen(
                                     horizontalArrangement = Arrangement.End,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    // Quick Edit Button
+                                    TextButton(
+                                        onClick = {
+                                            if (billWithItems != null) {
+                                                viewModel.startEditBill(billWithItems)
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            "Edit",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(4.dp))
+
                                     // View Button
                                     TextButton(
                                         onClick = {
@@ -799,6 +1235,19 @@ fun CustomerLedgerScreen(
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFFDCFCE7),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Bal: ${DimensionCalculator.formatCurrency(entry.runningBalance)}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF15803D),
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
                                         }
                                     }
 
@@ -821,24 +1270,14 @@ fun CustomerLedgerScreen(
                                         horizontalArrangement = Arrangement.End,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        TextButton(
+                                        Button(
                                             onClick = { selectedPaymentForReceipt = entry.payment },
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                            modifier = Modifier.height(32.dp)
+                                            modifier = Modifier.height(30.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDCFCE7))
                                         ) {
-                                            Icon(
-                                                Icons.Default.Receipt,
-                                                contentDescription = "Payment Receipt",
-                                                modifier = Modifier.size(15.dp),
-                                                tint = Color(0xFF16A34A)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                "Receipt",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF16A34A)
-                                            )
+                                            Text("💬 WhatsApp Receipt", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
                                         }
 
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -1034,7 +1473,9 @@ fun CustomerLedgerScreen(
                                 reference = payRef.trim(),
                                 notes = payNotes.trim(),
                                 dateMillis = payDateMillis
-                            )
+                            ) { savedPayment ->
+                                selectedPaymentForReceipt = savedPayment
+                            }
                             showPaymentDialog = false
                             payAmountStr = ""
                             payRef = ""
@@ -1147,11 +1588,12 @@ fun CustomerLedgerScreen(
                                     InvoicePrinter.printCustomerLedger(
                                         context = context,
                                         customer = cust,
-                                        ledgerEntries = ledgerEntries,
+                                        ledgerEntries = effectiveLedgerEntries,
                                         totalBilled = totalBilled,
                                         totalPaid = totalPaid,
                                         balance = balance,
-                                        company = company
+                                        company = company,
+                                        periodLabel = dateRangeLabel
                                     )
                                 }
                             ) {
@@ -1169,14 +1611,15 @@ fun CustomerLedgerScreen(
                     }
 
                     // Rendered HTML Document (Simulating PDF print preview)
-                    val htmlContent = remember(cust, ledgerEntries, totalBilled, totalPaid, balance, company) {
+                    val htmlContent = remember(cust, effectiveLedgerEntries, totalBilled, totalPaid, balance, company, dateRangeLabel) {
                         InvoicePrinter.generateLedgerHtml(
                             customer = cust,
-                            ledgerEntries = ledgerEntries,
+                            ledgerEntries = effectiveLedgerEntries,
                             totalBilled = totalBilled,
                             totalPaid = totalPaid,
                             balance = balance,
-                            company = company
+                            company = company,
+                            periodLabel = dateRangeLabel
                         )
                     }
 
@@ -1234,11 +1677,12 @@ fun CustomerLedgerScreen(
                                     InvoicePrinter.printCustomerLedger(
                                         context = context,
                                         customer = cust,
-                                        ledgerEntries = ledgerEntries,
+                                        ledgerEntries = effectiveLedgerEntries,
                                         totalBilled = totalBilled,
                                         totalPaid = totalPaid,
                                         balance = balance,
-                                        company = company
+                                        company = company,
+                                        periodLabel = dateRangeLabel
                                     )
                                 }
                             ) {
@@ -1255,34 +1699,50 @@ fun CustomerLedgerScreen(
 
     // Ledger Share Options Dialog (System Chooser, WhatsApp, WhatsApp Business, Text, Print)
     if (showLedgerShareOptions) {
+        val shareSubtitle = "${cust.name}${if (!dateRangeLabel.isNullOrBlank()) " • $dateRangeLabel" else ""} • Balance: ₹${String.format(java.util.Locale.US, "%.2f", balance)}"
         ShareOptionsDialog(
             title = "Share Account Statement",
-            subtitle = "${cust.name} • Balance: ₹${String.format(java.util.Locale.US, "%.2f", balance)}",
+            subtitle = shareSubtitle,
             onDismiss = { showLedgerShareOptions = false },
             onShareWhatsApp = {
                 ShareHelper.shareLedgerPdfWhatsApp(
-                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                    context, cust, effectiveLedgerEntries, totalBilled, totalPaid, balance, company, dateRangeLabel
                 )
             },
             onShareWhatsAppBusiness = {
                 ShareHelper.shareLedgerPdfWhatsAppBusiness(
-                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                    context, cust, effectiveLedgerEntries, totalBilled, totalPaid, balance, company, dateRangeLabel
                 )
             },
             onSharePdf = {
                 ShareHelper.shareLedgerPdfGeneral(
-                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                    context, cust, effectiveLedgerEntries, totalBilled, totalPaid, balance, company, dateRangeLabel
                 )
             },
             onShareText = {
                 ShareHelper.shareLedgerTextGeneral(
-                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                    context, cust, effectiveLedgerEntries, totalBilled, totalPaid, balance, company, dateRangeLabel
                 )
             },
             onPrint = {
                 InvoicePrinter.printCustomerLedger(
-                    context, cust, ledgerEntries, totalBilled, totalPaid, balance, company
+                    context, cust, effectiveLedgerEntries, totalBilled, totalPaid, balance, company, dateRangeLabel
                 )
+            },
+            onExportCsv = {
+                val uri = CsvExportHelper.exportCustomerLedgerCsv(
+                    context = context,
+                    customer = cust,
+                    ledgerEntries = effectiveLedgerEntries,
+                    totalBilled = totalBilled,
+                    totalPaid = totalPaid,
+                    balance = balance,
+                    company = company,
+                    periodLabel = dateRangeLabel
+                )
+                if (uri != null) {
+                    CsvExportHelper.shareCsvFile(context, uri, "Ledger Statement - ${cust.name}")
+                }
             }
         )
     }
@@ -1344,6 +1804,173 @@ fun CustomerLedgerScreen(
             previousBalance = Math.max(0.0, priorBalance),
             remainingBalance = Math.max(0.0, balance),
             onDismiss = { selectedPaymentForReceipt = null }
+        )
+    }
+
+    // Custom Date Range Picker Dialog (कस्टम तारीख अनुसार लेजर)
+    if (showCustomDateDialog) {
+        var tempFromMillis by remember { mutableStateOf(customFromMillis) }
+        var tempToMillis by remember { mutableStateOf(customToMillis) }
+
+        AlertDialog(
+            onDismissRequest = { showCustomDateDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.DateRange,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Select Date Range (तारीख चुनें)", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Choose Start Date and End Date to filter transactions and generate date-specific statement.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    // From Date Card
+                    OutlinedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val cal = java.util.Calendar.getInstance().apply { timeInMillis = tempFromMillis }
+                                android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        val c = java.util.Calendar.getInstance().apply {
+                                            set(year, month, day, 0, 0, 0)
+                                            set(java.util.Calendar.MILLISECOND, 0)
+                                        }
+                                        tempFromMillis = c.timeInMillis
+                                    },
+                                    cal.get(java.util.Calendar.YEAR),
+                                    cal.get(java.util.Calendar.MONTH),
+                                    cal.get(java.util.Calendar.DAY_OF_MONTH)
+                                ).show()
+                            },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("FROM DATE (शुरुआती तारीख)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.height(2.dp))
+                                Text(DimensionCalculator.formatDate(tempFromMillis), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Icon(Icons.Default.DateRange, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+
+                    // To Date Card
+                    OutlinedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val cal = java.util.Calendar.getInstance().apply { timeInMillis = tempToMillis }
+                                android.app.DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        val c = java.util.Calendar.getInstance().apply {
+                                            set(year, month, day, 23, 59, 59)
+                                            set(java.util.Calendar.MILLISECOND, 999)
+                                        }
+                                        tempToMillis = c.timeInMillis
+                                    },
+                                    cal.get(java.util.Calendar.YEAR),
+                                    cal.get(java.util.Calendar.MONTH),
+                                    cal.get(java.util.Calendar.DAY_OF_MONTH)
+                                ).show()
+                            },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("TO DATE (अंतिम तारीख)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.height(2.dp))
+                                Text(DimensionCalculator.formatDate(tempToMillis), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Icon(Icons.Default.DateRange, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+
+                    // Quick presets within dialog
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                val now = System.currentTimeMillis()
+                                tempFromMillis = now - 7L * 24 * 3600 * 1000
+                                tempToMillis = now
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Last 7 Days", fontSize = 10.5.sp)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val now = System.currentTimeMillis()
+                                tempFromMillis = now - 30L * 24 * 3600 * 1000
+                                tempToMillis = now
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Last 30 Days", fontSize = 10.5.sp)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val now = System.currentTimeMillis()
+                                tempFromMillis = now - 90L * 24 * 3600 * 1000
+                                tempToMillis = now
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Last 90 Days", fontSize = 10.5.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        customFromMillis = minOf(tempFromMillis, tempToMillis)
+                        customToMillis = maxOf(tempFromMillis, tempToMillis)
+                        dateRangeMode = LedgerDateRange.CUSTOM
+                        showCustomDateDialog = false
+                    }
+                ) {
+                    Text("Apply Filter")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomDateDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 

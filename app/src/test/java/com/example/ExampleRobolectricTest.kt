@@ -2,6 +2,7 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -115,6 +116,62 @@ class ExampleRobolectricTest {
       grandTotal = 1000.0
     )
     org.junit.Assert.assertFalse(bill.isGstIncluded)
+  }
+
+  @Test
+  fun `saving a new bill adds to customer ledger`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val database = androidx.room.Room.inMemoryDatabaseBuilder(context, com.example.data.db.DoorDatabase::class.java).build()
+    val repo = com.example.data.repository.DoorBillingRepository(
+      customerDao = database.customerDao(),
+      billDao = database.billDao(),
+      paymentDao = database.paymentDao(),
+      companyProfileDao = database.companyProfileDao(),
+      supplierDao = database.supplierDao(),
+      purchaseDao = database.purchaseDao(),
+      purchasePaymentDao = database.purchasePaymentDao(),
+      doorPresetDao = database.doorPresetDao(),
+      purchaseReturnDao = database.purchaseReturnDao(),
+      rawMaterialCatalogDao = database.rawMaterialCatalogDao()
+    )
+
+    val custId = repo.saveCustomer(
+      com.example.data.db.CustomerEntity(
+        firmName = "Patel Wood",
+        name = "Bhavesh",
+        mobile = "9876543210"
+      )
+    )
+
+    val bill = com.example.data.db.BillEntity(
+      invoiceNo = repo.generateNextInvoiceNumber(),
+      customerId = custId,
+      customerName = "Patel Wood",
+      customerMobile = "9876543210",
+      customerAddress = "Kudachi",
+      customerGstNo = "",
+      grandTotal = 5000.0
+    )
+
+    val items = listOf(
+      com.example.data.db.BillItemEntity(
+        slNo = 1,
+        particular = "Flush Door 30mm",
+        height = 78.0,
+        width = 30.0,
+        qty = 1,
+        sqFt = 16.25,
+        rate = 150.0,
+        amount = 5000.0
+      )
+    )
+
+    repo.saveBill(bill, items)
+
+    val ledgerEntries = repo.getCustomerLedger(custId).first()
+    val billEntries = ledgerEntries.filterIsInstance<com.example.data.db.LedgerEntry.BillEntry>()
+    assertEquals(1, billEntries.size)
+    assertEquals(5000.0, billEntries[0].grandTotal, 0.01)
   }
 }
 

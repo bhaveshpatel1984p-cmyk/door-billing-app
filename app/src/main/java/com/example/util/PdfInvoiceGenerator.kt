@@ -722,7 +722,8 @@ object PdfInvoiceGenerator {
         totalBilled: Double,
         totalPaid: Double,
         balance: Double,
-        company: CompanyProfileEntity
+        company: CompanyProfileEntity,
+        periodLabel: String? = null
     ): File {
         val ledgerDir = File(context.cacheDir, "ledgers")
         if (!ledgerDir.exists()) {
@@ -739,7 +740,7 @@ object PdfInvoiceGenerator {
         val page = document.startPage(pageInfo)
         val canvas: Canvas = page.canvas
 
-        drawLedger(canvas, pageWidth.toFloat(), pageHeight.toFloat(), customer, ledgerEntries, totalBilled, totalPaid, balance, company, context)
+        drawLedger(canvas, pageWidth.toFloat(), pageHeight.toFloat(), customer, ledgerEntries, totalBilled, totalPaid, balance, company, context, periodLabel)
 
         document.finishPage(page)
 
@@ -761,7 +762,8 @@ object PdfInvoiceGenerator {
         totalPaid: Double,
         balance: Double,
         company: CompanyProfileEntity,
-        context: Context
+        context: Context,
+        periodLabel: String? = null
     ) {
         val margin = 20f
         val contentWidth = pageWidth - (margin * 2)
@@ -811,7 +813,15 @@ object PdfInvoiceGenerator {
         textPaint.textSize = 7.5f
         textPaint.color = Color.parseColor("#E2E8F0")
         val dateText = "Date: ${DimensionCalculator.formatDate(System.currentTimeMillis())}"
-        canvas.drawText(dateText, colEnd - textPaint.measureText(dateText) - 12f, margin + 38f, textPaint)
+        canvas.drawText(dateText, colEnd - textPaint.measureText(dateText) - 12f, margin + 36f, textPaint)
+
+        if (!periodLabel.isNullOrBlank()) {
+            val periodText = "Period: $periodLabel"
+            textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textPaint.textSize = 7f
+            textPaint.color = Color.parseColor("#FEF08A")
+            canvas.drawText(periodText, colEnd - textPaint.measureText(periodText) - 12f, margin + 47f, textPaint)
+        }
 
         var currentY = margin + 55f
 

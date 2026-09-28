@@ -20,9 +20,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.platform.LocalContext
+import com.example.util.ShareHelper
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -63,7 +66,9 @@ import com.example.util.DimensionCalculator
 fun CustomerBalanceScreen(
     viewModel: DoorBillingViewModel
 ) {
+    val context = LocalContext.current
     val customerBalances by viewModel.customerBalances.collectAsStateWithLifecycle()
+    val company by viewModel.companyProfile.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredList = remember(customerBalances, searchQuery) {
@@ -201,6 +206,14 @@ fun CustomerBalanceScreen(
                         },
                         onAddPayment = {
                             viewModel.openCustomerLedger(summary.customer, openPaymentDialog = true)
+                        },
+                        onRemind = {
+                            ShareHelper.sendPaymentReminderWhatsApp(
+                                context = context,
+                                customer = summary.customer,
+                                balanceDue = summary.balance,
+                                company = company
+                            )
                         }
                     )
                 }
@@ -213,7 +226,8 @@ fun CustomerBalanceScreen(
 fun CustomerBalanceCard(
     summary: CustomerBalanceSummary,
     onClick: () -> Unit,
-    onAddPayment: () -> Unit = {}
+    onAddPayment: () -> Unit = {},
+    onRemind: () -> Unit = {}
 ) {
     val cust = summary.customer
     val balance = summary.balance
@@ -299,13 +313,37 @@ fun CustomerBalanceCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedButton(
-                    onClick = onClick,
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                    modifier = Modifier.height(32.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Statement / Ledger ➔", fontSize = 11.5.sp)
+                    OutlinedButton(
+                        onClick = onClick,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text("Ledger ➔", fontSize = 11.5.sp)
+                    }
+
+                    if (balance > 0) {
+                        OutlinedButton(
+                            onClick = onRemind,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(32.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF16A34A))
+                        ) {
+                            Icon(
+                                Icons.Default.Chat,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp),
+                                tint = Color(0xFF16A34A)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("तगादा", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                        }
+                    }
                 }
 
                 Button(

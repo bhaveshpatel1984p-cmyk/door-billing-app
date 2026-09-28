@@ -26,9 +26,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -131,6 +134,7 @@ fun NewEntryScreen(
     val rateStr by viewModel.itemRateInput.collectAsStateWithLifecycle()
 
     var customerDropdownExpanded by remember { mutableStateOf(false) }
+    var customerSearchQuery by remember { mutableStateOf("") }
     var showQuickCustomerDialog by remember { mutableStateOf(false) }
     var quickFirmName by remember { mutableStateOf("") }
     var quickCustomerName by remember { mutableStateOf("") }
@@ -139,6 +143,7 @@ fun NewEntryScreen(
     var quickCustomerGst by remember { mutableStateOf("") }
     var quickCustomerOpeningBalance by remember { mutableStateOf("") }
     var billSavedShareTarget by remember { mutableStateOf<BillWithItems?>(null) }
+    val savedBillDialogTarget by viewModel.savedBillDialogTarget.collectAsStateWithLifecycle()
     val isQuotation by viewModel.isQuotationDraft.collectAsStateWithLifecycle()
     val allDoorPresets by viewModel.allDoorPresets.collectAsStateWithLifecycle()
     var showPresetManagerDialog by remember { mutableStateOf(false) }
@@ -344,18 +349,45 @@ fun NewEntryScreen(
 
                             ExposedDropdownMenu(
                                 expanded = customerDropdownExpanded,
-                                onDismissRequest = { customerDropdownExpanded = false }
+                                onDismissRequest = {
+                                    customerDropdownExpanded = false
+                                    customerSearchQuery = ""
+                                }
                             ) {
-                                if (allCustomers.isEmpty()) {
+                                // Search Field inside dropdown
+                                OutlinedTextField(
+                                    value = customerSearchQuery,
+                                    onValueChange = { customerSearchQuery = it },
+                                    placeholder = { Text("Search name/firm/phone...", fontSize = 12.sp) },
+                                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    textStyle = TextStyle(fontSize = 13.sp)
+                                )
+
+                                val filteredCustomers = if (customerSearchQuery.isBlank()) allCustomers
+                                else allCustomers.filter {
+                                    it.firmName.contains(customerSearchQuery, ignoreCase = true) ||
+                                            it.name.contains(customerSearchQuery, ignoreCase = true) ||
+                                            it.mobile.contains(customerSearchQuery, ignoreCase = true)
+                                }
+
+                                if (filteredCustomers.isEmpty()) {
                                     DropdownMenuItem(
-                                        text = { Text("No customers yet. Click '+ New Customer'") },
+                                        text = { Text(if (customerSearchQuery.isBlank()) "No customers yet. Click '+ New Customer'" else "No matches for '$customerSearchQuery'. Click to add", fontSize = 12.5.sp) },
                                         onClick = {
+                                            if (customerSearchQuery.isNotBlank()) {
+                                                quickFirmName = customerSearchQuery.trim()
+                                            }
                                             customerDropdownExpanded = false
+                                            customerSearchQuery = ""
                                             showQuickCustomerDialog = true
                                         }
                                     )
                                 } else {
-                                    allCustomers.forEach { cust ->
+                                    filteredCustomers.forEach { cust ->
                                         DropdownMenuItem(
                                             text = {
                                                 Column {
@@ -371,6 +403,7 @@ fun NewEntryScreen(
                                             onClick = {
                                                 viewModel.selectCustomerForBill(cust)
                                                 customerDropdownExpanded = false
+                                                customerSearchQuery = ""
                                             }
                                         )
                                     }
@@ -1422,13 +1455,33 @@ fun NewEntryScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (quickFirmName.isNotBlank() || quickCustomerName.isNotBlank()) {
-                            viewModel.customerFirmNameInput.value = quickFirmName
-                            viewModel.customerNameInput.value = quickCustomerName
-                            viewModel.customerMobileInput.value = quickCustomerMobile
-                            viewModel.customerAddressInput.value = quickCustomerAddress
-                            viewModel.customerGstInput.value = quickCustomerGst
-                            viewModel.customerOpeningBalanceInput.value = quickCustomerOpeningBalance
+                        val firmTrimmed = quickFirmName.trim()
+                        val nameTrimmed = quickCustomerName.trim()
+                        val mobileTrimmed = quickCustomerMobile.trim()
+
+                        // Check if customer already exists by firm name or mobile
+                        val existing = allCustomers.find {
+                            (firmTrimmed.isNotBlank() && it.firmName.equals(firmTrimmed, ignoreCase = true)) ||
+                                    (mobileTrimmed.isNotBlank() && it.mobile == mobileTrimmed)
+                        }
+
+                        if (existing != null) {
+                            viewModel.selectCustomerForBill(existing)
+                            showQuickCustomerDialog = false
+                            quickFirmName = ""
+                            quickCustomerName = ""
+                            quickCustomerMobile = ""
+                            quickCustomerAddress = ""
+                            quickCustomerGst = ""
+                            quickCustomerOpeningBalance = ""
+                            viewModel.showMessage("Selected existing customer: ${existing.displayName}")
+                        } else if (firmTrimmed.isNotBlank() || nameTrimmed.isNotBlank()) {
+                            viewModel.customerFirmNameInput.value = firmTrimmed
+                            viewModel.customerNameInput.value = nameTrimmed
+                            viewModel.customerMobileInput.value = mobileTrimmed
+                            viewModel.customerAddressInput.value = quickCustomerAddress.trim()
+                            viewModel.customerGstInput.value = quickCustomerGst.trim()
+                            viewModel.customerOpeningBalanceInput.value = quickCustomerOpeningBalance.trim()
                             viewModel.saveCustomer { savedCust ->
                                 viewModel.selectCustomerForBill(savedCust)
                                 showQuickCustomerDialog = false
@@ -1491,6 +1544,204 @@ fun NewEntryScreen(
             billWithItems = b,
             company = company,
             onDismiss = { showChallanFromSave = null }
+        )
+    }
+
+    // Bill Saved Success Dialog (with direct access to Customer Ledger)
+    savedBillDialogTarget?.let { b ->
+        val bill = b.bill
+        val isQuote = bill.isQuotation
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissSavedBillDialog() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFDCFCE7),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = Color(0xFF16A34A),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = if (isQuote) "Estimate Saved!" else "Bill Saved Successfully!",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            color = Color(0xFF15803D)
+                        )
+                        Text(
+                            text = "खाते / लेजर में जुड़ गया",
+                            fontSize = 11.5.sp,
+                            color = Color(0xFF16A34A)
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Document:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "${if (isQuote) "Quote" else "Invoice"} #${bill.invoiceNo}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF0369A1)
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Customer / Party:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    bill.customerName,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Bill Amount:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    DimensionCalculator.formatCurrency(bill.grandTotal),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 14.sp,
+                                    color = Color(0xFF16A34A)
+                                )
+                            }
+                            if (bill.previousBalance > 0) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Previous Due:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        DimensionCalculator.formatCurrency(bill.previousBalance),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFFC2410C)
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Net Total Due:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        DimensionCalculator.formatCurrency(bill.netPayable),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFFC2410C)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Direct Action: View Customer Ledger (खाता / लेजर देखें)
+                    Button(
+                        onClick = {
+                            viewModel.dismissSavedBillDialog()
+                            viewModel.openCustomerLedgerById(bill.customerId)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0369A1))
+                    ) {
+                        Icon(Icons.Default.AccountBalance, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("View Customer Ledger (लेजर देखें)", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                InvoicePrinter.printInvoice(context, b, company)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF0284C7))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Print", fontSize = 12.5.sp, color = Color(0xFF0284C7))
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                ShareHelper.shareInvoicePdfWhatsApp(context, b, company)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF25D366))
+                            Spacer(Modifier.width(4.dp))
+                            Text("WhatsApp", fontSize = 12.5.sp, color = Color(0xFF16A34A))
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.dismissSavedBillDialog()
+                                viewModel.startNewBill()
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("New Bill", fontSize = 12.5.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.dismissSavedBillDialog()
+                                viewModel.navigateTo(AppScreen.EDIT_ENTRY)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("All Bills", fontSize = 12.5.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.dismissSavedBillDialog()
+                        viewModel.navigateTo(AppScreen.DASHBOARD)
+                    }
+                ) {
+                    Text("Done (Dashboard)")
+                }
+            }
         )
     }
 

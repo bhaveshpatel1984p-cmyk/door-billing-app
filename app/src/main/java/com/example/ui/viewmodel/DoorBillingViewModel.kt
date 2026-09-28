@@ -44,6 +44,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -436,7 +438,10 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val itemQtyInput = MutableStateFlow("1")
     val itemRateInput = MutableStateFlow("")
 
-    fun startNewBill(presetCustomer: CustomerEntity? = null) {
+    var originScreenForBill: AppScreen = AppScreen.DASHBOARD
+
+    fun startNewBill(presetCustomer: CustomerEntity? = null, origin: AppScreen = AppScreen.DASHBOARD) {
+        originScreenForBill = origin
         viewModelScope.launch {
             billIdDraft.value = 0L
             invoiceNoDraft.value = repository.generateNextInvoiceNumber()
@@ -611,6 +616,12 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         billItemsDraft.value = updated
     }
 
+    val savedBillDialogTarget = MutableStateFlow<BillWithItems?>(null)
+
+    fun dismissSavedBillDialog() {
+        savedBillDialogTarget.value = null
+    }
+
     fun saveCurrentBill(onSaved: (BillWithItems) -> Unit = {}) {
         val customer = selectedCustomerDraft.value
         if (customer == null) {
@@ -641,13 +652,39 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         val netPayable = grandTotal + prevBalance
 
         viewModelScope.launch {
+            // Ensure customer is persisted in database and has a valid ID > 0
+            val actualCustomerId = if (customer.id == 0L) {
+                repository.saveCustomer(customer)
+            } else {
+                customer.id
+            }
+
+            // Generate unique invoice number if creating a new bill
+            val initialInvoiceNo = invoiceNoDraft.value.ifBlank {
+                if (isQuotationDraft.value) repository.generateNextQuotationNumber()
+                else repository.generateNextInvoiceNumber()
+            }
+            val finalInvoiceNo = if (billIdDraft.value == 0L) {
+                var candidate = initialInvoiceNo
+                val existingBills = repository.getAllBillsDirect()
+                var counter = 1
+                while (existingBills.any { it.invoiceNo.equals(candidate, ignoreCase = true) }) {
+                    candidate = if (isQuotationDraft.value) {
+                        repository.generateNextQuotationNumber() + "-$counter"
+                    } else {
+                        repository.generateNextInvoiceNumber() + "-$counter"
+                    }
+                    counter++
+                }
+                candidate
+            } else {
+                initialInvoiceNo
+            }
+
             val billEntity = BillEntity(
                 id = billIdDraft.value,
-                invoiceNo = invoiceNoDraft.value.ifBlank {
-                    if (isQuotationDraft.value) repository.generateNextQuotationNumber()
-                    else repository.generateNextInvoiceNumber()
-                },
-                customerId = customer.id,
+                invoiceNo = finalInvoiceNo,
+                customerId = actualCustomerId,
                 customerName = customer.displayName,
                 customerMobile = customer.mobile,
                 customerAddress = customer.address,
@@ -678,14 +715,14 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
 
             // Synchronize entered previous balance with customer's ledger/opening balance
             if (includePreviousBalanceDraft.value && prevBalance > 0.0) {
-                val priorDue = repository.getCustomerDueBalance(customer.id, excludeBillId = savedBillId)
+                val priorDue = repository.getCustomerDueBalance(actualCustomerId, excludeBillId = savedBillId)
                 val delta = prevBalance - priorDue
                 if (Math.abs(delta) > 0.01) {
-                    val updatedCustomer = customer.copy(
-                        openingBalance = maxOf(0.0, customer.openingBalance + delta)
+                    val currentCustomer = repository.getCustomerByIdDirect(actualCustomerId) ?: customer
+                    val updatedCustomer = currentCustomer.copy(
+                        openingBalance = maxOf(0.0, currentCustomer.openingBalance + delta)
                     )
                     repository.saveCustomer(updatedCustomer)
-                    selectedCustomerDraft.value = updatedCustomer
                 }
             }
 
@@ -693,7 +730,7 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             if (billIdDraft.value == 0L && paidAmountDraft.value > 0) {
                 repository.addPayment(
                     PaymentEntity(
-                        customerId = customer.id,
+                        customerId = actualCustomerId,
                         customerName = customer.displayName,
                         billId = savedBillId,
                         amount = paidAmountDraft.value,
@@ -704,9 +741,20 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
                 )
             }
 
-            showMessage("Bill #${finalBill.invoiceNo} saved successfully!")
+            // Fetch fresh customer entity from database to ensure openingBalance and all fields are 100% up-to-date
+            val freshCustomer = repository.getCustomerByIdDirect(actualCustomerId)
+                ?: customer.copy(id = actualCustomerId)
+            selectedCustomerDraft.value = freshCustomer
+            selectedLedgerCustomerId.value = actualCustomerId
+
+            showMessage("Bill #${finalBill.invoiceNo} saved & added to ${freshCustomer.displayName}'s ledger!")
             onSaved(finalBillWithItems)
-            navigateTo(AppScreen.EDIT_ENTRY)
+
+            if (originScreenForBill == AppScreen.CUSTOMER_LEDGER) {
+                openCustomerLedger(freshCustomer)
+            } else {
+                savedBillDialogTarget.value = finalBillWithItems
+            }
         }
     }
 
@@ -723,28 +771,40 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     val customerBalances: StateFlow<List<CustomerBalanceSummary>> = repository.customerBalancesSummary
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val selectedLedgerCustomer = MutableStateFlow<CustomerEntity?>(null)
-    val ledgerEntries = MutableStateFlow<List<LedgerEntry>>(emptyList())
+    val selectedLedgerCustomerId = MutableStateFlow<Long?>(null)
     val shouldAutoOpenPaymentDialog = MutableStateFlow(false)
 
-    fun openCustomerLedger(customer: CustomerEntity, openPaymentDialog: Boolean = false) {
-        selectedLedgerCustomer.value = customer
-        shouldAutoOpenPaymentDialog.value = openPaymentDialog
-        viewModelScope.launch {
-            repository.getCustomerLedger(customer.id).collect { entries ->
-                ledgerEntries.value = entries
-            }
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val selectedLedgerCustomer: StateFlow<CustomerEntity?> = selectedLedgerCustomerId
+        .flatMapLatest { id ->
+            if (id != null) repository.getCustomerById(id)
+            else flowOf(null)
         }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val ledgerEntries: StateFlow<List<LedgerEntry>> = selectedLedgerCustomerId
+        .flatMapLatest { id ->
+            if (id != null) repository.getCustomerLedger(id)
+            else flowOf(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun openCustomerLedger(customer: CustomerEntity, openPaymentDialog: Boolean = false) {
+        selectedLedgerCustomerId.value = customer.id
+        shouldAutoOpenPaymentDialog.value = openPaymentDialog
+        navigateTo(AppScreen.CUSTOMER_LEDGER)
+    }
+
+    fun openCustomerLedgerById(customerId: Long, openPaymentDialog: Boolean = false) {
+        selectedLedgerCustomerId.value = customerId
+        shouldAutoOpenPaymentDialog.value = openPaymentDialog
         navigateTo(AppScreen.CUSTOMER_LEDGER)
     }
 
     fun updateCustomerOpeningBalance(customerId: Long, openingBalance: Double) {
         viewModelScope.launch {
             repository.updateCustomerOpeningBalance(customerId, openingBalance)
-            val updated = repository.getCustomerByIdDirect(customerId)
-            if (updated != null && selectedLedgerCustomer.value?.id == customerId) {
-                selectedLedgerCustomer.value = updated
-            }
             showMessage("Customer opening balance updated to ₹${DimensionCalculator.formatDimension(openingBalance)}")
         }
     }
@@ -756,25 +816,28 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
         mode: String,
         reference: String,
         notes: String,
-        dateMillis: Long = System.currentTimeMillis()
+        dateMillis: Long = System.currentTimeMillis(),
+        onPaymentRecorded: (PaymentEntity) -> Unit = {}
     ) {
         if (amount <= 0) {
             showMessage("Please enter a valid payment amount")
             return
         }
         viewModelScope.launch {
-            repository.addPayment(
-                PaymentEntity(
-                    customerId = customerId,
-                    customerName = customerName,
-                    amount = amount,
-                    dateMillis = dateMillis,
-                    paymentMode = mode,
-                    referenceNo = reference,
-                    notes = notes
-                )
+            val payment = PaymentEntity(
+                customerId = customerId,
+                customerName = customerName,
+                amount = amount,
+                dateMillis = dateMillis,
+                paymentMode = mode,
+                referenceNo = reference,
+                notes = notes
             )
+            val newId = repository.addPayment(payment)
             showMessage("Payment of ₹${DimensionCalculator.formatDimension(amount)} recorded!")
+            withContext(Dispatchers.Main) {
+                onPaymentRecorded(payment.copy(id = newId))
+            }
         }
     }
 

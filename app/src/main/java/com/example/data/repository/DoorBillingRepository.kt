@@ -86,16 +86,20 @@ class DoorBillingRepository(
     }
 
     suspend fun generateNextInvoiceNumber(): String {
-        val count = billDao.getTotalBillsCount()
+        val maxId = billDao.getMaxBillId() ?: 0L
+        val count = billDao.getTotalBillsCount().toLong()
+        val base = maxOf(maxId, count)
         val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
-        val seq = (count + 1).toString().padStart(4, '0')
+        val seq = (base + 1).toString().padStart(4, '0')
         return "INV/$year/$seq"
     }
 
     suspend fun generateNextQuotationNumber(): String {
-        val count = billDao.getTotalBillsCount()
+        val maxId = billDao.getMaxBillId() ?: 0L
+        val count = billDao.getTotalBillsCount().toLong()
+        val base = maxOf(maxId, count)
         val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
-        val seq = (count + 1).toString().padStart(4, '0')
+        val seq = (base + 1).toString().padStart(4, '0')
         return "EST/$year/$seq"
     }
 
@@ -162,15 +166,14 @@ class DoorBillingRepository(
             paymentDao.getAllPayments()
         ) { customers, bills, payments ->
             customers.map { customer ->
-                val customerBills = bills.filter { it.bill.customerId == customer.id }
+                val customerBills = bills.filter { it.bill.customerId == customer.id && !it.bill.isQuotation }
                 val customerPayments = payments.filter { it.customerId == customer.id }
 
-                val earliestBillWithPrevBal = customerBills.filter { it.bill.previousBalance > 0.0 }
-                    .minByOrNull { it.bill.dateMillis }
+                val earliestBill = customerBills.minWithOrNull(compareBy({ it.bill.dateMillis }, { it.bill.id }))?.bill
                 val effectiveOpeningBalance = if (customer.openingBalance > 0.0) {
                     customer.openingBalance
                 } else {
-                    earliestBillWithPrevBal?.bill?.previousBalance ?: 0.0
+                    if (earliestBill != null && earliestBill.previousBalance > 0.0) earliestBill.previousBalance else 0.0
                 }
 
                 val totalBilled = effectiveOpeningBalance + customerBills.sumOf { it.bill.grandTotal }
@@ -198,17 +201,17 @@ class DoorBillingRepository(
 
     suspend fun getCustomerDueBalance(customerId: Long, excludeBillId: Long = 0L): Double {
         val cust = customerDao.getCustomerById(customerId)
-        val customerBills = if (excludeBillId > 0L) {
+        val allCustomerBills = if (excludeBillId > 0L) {
             billDao.getBillsByCustomerDirectExcluding(customerId, excludeBillId)
         } else {
             billDao.getBillsByCustomerDirect(customerId)
         }
-        val earliestWithPrevBal = customerBills.filter { it.previousBalance > 0.0 }
-            .minByOrNull { it.dateMillis }
+        val customerBills = allCustomerBills.filter { !it.isQuotation }
+        val earliestBill = customerBills.minWithOrNull(compareBy({ it.dateMillis }, { it.id }))
         val effectiveOpeningBalance = if ((cust?.openingBalance ?: 0.0) > 0.0) {
             cust!!.openingBalance
         } else {
-            earliestWithPrevBal?.previousBalance ?: 0.0
+            if (earliestBill != null && earliestBill.previousBalance > 0.0) earliestBill.previousBalance else 0.0
         }
 
         val totalBilled = customerBills.sumOf { it.grandTotal }
@@ -220,7 +223,7 @@ class DoorBillingRepository(
         return maxOf(0.0, (effectiveOpeningBalance + totalBilled) - totalPaid)
     }
 
-    // Combined Ledger for a customer
+    // Combined Ledger for a customer with calculated Running Balance
     fun getCustomerLedger(customerId: Long): Flow<List<LedgerEntry>> =
         combine(
             customerDao.getCustomerByIdFlow(customerId),
@@ -248,12 +251,12 @@ class DoorBillingRepository(
                 )
             }
 
-            val legacyPrevBal = bills.map { it.bill }.filter { it.previousBalance > 0.0 }
-                .minByOrNull { it.dateMillis }?.previousBalance ?: 0.0
+            val nonQuoteBills = bills.filter { !it.bill.isQuotation }
+            val earliestBill = nonQuoteBills.minWithOrNull(compareBy({ it.bill.dateMillis }, { it.bill.id }))?.bill
             val effectiveOpeningBalance = if ((customer?.openingBalance ?: 0.0) > 0.0) {
                 customer!!.openingBalance
             } else {
-                legacyPrevBal
+                if (earliestBill != null && earliestBill.previousBalance > 0.0) earliestBill.previousBalance else 0.0
             }
 
             val openingEntries: List<LedgerEntry> = if (effectiveOpeningBalance > 0.0) {
@@ -265,13 +268,28 @@ class DoorBillingRepository(
                         id = -1L,
                         dateMillis = earliestDate - 1000L,
                         openingAmount = effectiveOpeningBalance,
-                        customerName = customer?.displayName ?: ""
+                        customerName = customer?.displayName ?: "",
+                        runningBalance = effectiveOpeningBalance
                     )
                 )
             } else emptyList()
 
-            (openingEntries + billEntries + paymentEntries).sortedBy { it.dateMillis }
+            // Sort chronologically (oldest to newest) to calculate running balance accurately
+            val chronologicalList = (openingEntries + billEntries + paymentEntries)
+                .sortedWith(compareBy({ it.dateMillis }, { it.id }))
+
+            var running = 0.0
+            chronologicalList.map { entry ->
+                running = running + entry.debitAmount - entry.creditAmount
+                when (entry) {
+                    is LedgerEntry.OpeningBalanceEntry -> entry.copy(runningBalance = running)
+                    is LedgerEntry.BillEntry -> entry.copy(runningBalance = running)
+                    is LedgerEntry.PaymentRecord -> entry.copy(runningBalance = running)
+                }
+            }
         }
+
+    suspend fun getAllBillsDirect(): List<BillEntity> = billDao.getAllBillsDirect()
 
     suspend fun updateCustomerOpeningBalance(customerId: Long, openingBalance: Double) {
         val cust = customerDao.getCustomerById(customerId) ?: return

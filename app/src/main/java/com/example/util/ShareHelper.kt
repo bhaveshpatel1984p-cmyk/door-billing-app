@@ -226,11 +226,12 @@ object ShareHelper {
         totalBilled: Double,
         totalPaid: Double,
         balance: Double,
-        company: CompanyProfileEntity
+        company: CompanyProfileEntity,
+        periodLabel: String? = null
     ) {
         try {
             val pdfFile = PdfInvoiceGenerator.generateLedgerPdf(
-                context, customer, ledgerEntries, totalBilled, totalPaid, balance, company
+                context, customer, ledgerEntries, totalBilled, totalPaid, balance, company, periodLabel
             )
             val uri = FileProvider.getUriForFile(
                 context,
@@ -238,12 +239,12 @@ object ShareHelper {
                 pdfFile
             )
 
-            val summaryText = buildLedgerCaption(customer, ledgerEntries, totalBilled, totalPaid, balance, company)
+            val summaryText = buildLedgerCaption(customer, ledgerEntries, totalBilled, totalPaid, balance, company, periodLabel)
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "application/pdf"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_TEXT, summaryText)
-                putExtra(Intent.EXTRA_SUBJECT, "Account Statement - ${customer.name}")
+                putExtra(Intent.EXTRA_SUBJECT, "Account Statement - ${customer.name}${if (!periodLabel.isNullOrBlank()) " ($periodLabel)" else ""}")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startChooserSafely(context, intent, "Share Account Statement via")
@@ -262,18 +263,19 @@ object ShareHelper {
         totalBilled: Double,
         totalPaid: Double,
         balance: Double,
-        company: CompanyProfileEntity
+        company: CompanyProfileEntity,
+        periodLabel: String? = null
     ) {
         try {
             val pdfFile = PdfInvoiceGenerator.generateLedgerPdf(
-                context, customer, ledgerEntries, totalBilled, totalPaid, balance, company
+                context, customer, ledgerEntries, totalBilled, totalPaid, balance, company, periodLabel
             )
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
                 pdfFile
             )
-            val summaryText = buildLedgerCaption(customer, ledgerEntries, totalBilled, totalPaid, balance, company)
+            val summaryText = buildLedgerCaption(customer, ledgerEntries, totalBilled, totalPaid, balance, company, periodLabel)
             sharePdfDirect(
                 context = context,
                 pdfUri = uri,
@@ -297,18 +299,19 @@ object ShareHelper {
         totalBilled: Double,
         totalPaid: Double,
         balance: Double,
-        company: CompanyProfileEntity
+        company: CompanyProfileEntity,
+        periodLabel: String? = null
     ) {
         try {
             val pdfFile = PdfInvoiceGenerator.generateLedgerPdf(
-                context, customer, ledgerEntries, totalBilled, totalPaid, balance, company
+                context, customer, ledgerEntries, totalBilled, totalPaid, balance, company, periodLabel
             )
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
                 pdfFile
             )
-            val summaryText = buildLedgerCaption(customer, ledgerEntries, totalBilled, totalPaid, balance, company)
+            val summaryText = buildLedgerCaption(customer, ledgerEntries, totalBilled, totalPaid, balance, company, periodLabel)
             sharePdfDirect(
                 context = context,
                 pdfUri = uri,
@@ -332,9 +335,10 @@ object ShareHelper {
         totalBilled: Double,
         totalPaid: Double,
         balance: Double,
-        company: CompanyProfileEntity
+        company: CompanyProfileEntity,
+        periodLabel: String? = null
     ) {
-        shareLedgerPdfWhatsApp(context, customer, ledgerEntries, totalBilled, totalPaid, balance, company)
+        shareLedgerPdfWhatsApp(context, customer, ledgerEntries, totalBilled, totalPaid, balance, company, periodLabel)
     }
 
     /**
@@ -347,13 +351,14 @@ object ShareHelper {
         totalBilled: Double,
         totalPaid: Double,
         balance: Double,
-        company: CompanyProfileEntity
+        company: CompanyProfileEntity,
+        periodLabel: String? = null
     ) {
-        val summaryText = buildLedgerCaption(customer, ledgerEntries, totalBilled, totalPaid, balance, company)
+        val summaryText = buildLedgerCaption(customer, ledgerEntries, totalBilled, totalPaid, balance, company, periodLabel)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, summaryText)
-            putExtra(Intent.EXTRA_SUBJECT, "Statement - ${customer.name}")
+            putExtra(Intent.EXTRA_SUBJECT, "Statement - ${customer.name}${if (!periodLabel.isNullOrBlank()) " ($periodLabel)" else ""}")
         }
         context.startActivity(Intent.createChooser(intent, "Share Statement Summary via"))
     }
@@ -364,7 +369,8 @@ object ShareHelper {
         totalBilled: Double,
         totalPaid: Double,
         balance: Double,
-        company: CompanyProfileEntity
+        company: CompanyProfileEntity,
+        periodLabel: String? = null
     ): String {
         val sb = StringBuilder()
         sb.appendLine("📊 *CUSTOMER ACCOUNT STATEMENT*")
@@ -373,7 +379,10 @@ object ShareHelper {
         sb.appendLine("━━━━━━━━━━━━━━━━━━━")
         sb.appendLine("👤 *Customer:* ${customer.name}")
         if (customer.mobile.isNotBlank()) sb.appendLine("📱 Mobile: ${customer.mobile}")
-        sb.appendLine("📅 *Date:* ${DimensionCalculator.formatDate(System.currentTimeMillis())}")
+        sb.appendLine("📅 *Statement Date:* ${DimensionCalculator.formatDate(System.currentTimeMillis())}")
+        if (!periodLabel.isNullOrBlank()) {
+            sb.appendLine("🗓️ *Statement Period:* $periodLabel")
+        }
         sb.appendLine("━━━━━━━━━━━━━━━━━━━")
         sb.appendLine("📜 *RECENT TRANSACTIONS:*")
 
@@ -521,7 +530,51 @@ object ShareHelper {
     }
 
     /**
-     * Share Payment Receipt via WhatsApp
+     * Sends instant Payment Received Confirmation text message directly to customer via WhatsApp
+     */
+    fun sendPaymentReceiptWhatsAppDirect(
+        context: Context,
+        payment: PaymentEntity,
+        customerName: String,
+        customerMobile: String,
+        company: CompanyProfileEntity,
+        previousBalance: Double,
+        remainingBalance: Double
+    ) {
+        val rcptNo = "REC-${payment.id.toString().padStart(4, '0')}"
+        val message = buildString {
+            appendLine("🧾 *PAYMENT RECEIVED CONFIRMATION*")
+            appendLine("━━━━━━━━━━━━━━━━━━━")
+            appendLine("*${company.businessName.ifBlank { "Door Billing" }}*")
+            if (company.mobile.isNotBlank()) appendLine("📞 Phone: ${company.displayMobile}")
+            appendLine("━━━━━━━━━━━━━━━━━━━")
+            appendLine("Dear *${customerName}*,")
+            appendLine("We have successfully received your payment. Thank you! 🙏")
+            appendLine("")
+            appendLine("📋 *RECEIPT DETAILS:*")
+            appendLine("• *Voucher No:* $rcptNo")
+            appendLine("• *Date:* ${DimensionCalculator.formatDate(payment.dateMillis)}")
+            appendLine("• *Amount Received:* *₹ ${String.format(Locale.US, "%,.2f", payment.amount)}*")
+            appendLine("• *Payment Mode:* ${payment.paymentMode}")
+            if (payment.referenceNo.isNotBlank()) {
+                appendLine("• *Ref/Txn No:* ${payment.referenceNo}")
+            }
+            if (payment.notes.isNotBlank()) {
+                appendLine("• *Notes:* ${payment.notes}")
+            }
+            appendLine("")
+            appendLine("💰 *ACCOUNT BALANCE:*")
+            appendLine("• *Previous Due:* ₹ ${String.format(Locale.US, "%,.2f", previousBalance)}")
+            appendLine("• *Amount Credited:* ₹ ${String.format(Locale.US, "%,.2f", payment.amount)}")
+            appendLine("• *Remaining Balance:* *₹ ${String.format(Locale.US, "%,.2f", remainingBalance)}*")
+            appendLine("━━━━━━━━━━━━━━━━━━━")
+            appendLine("Thank you for your business! 🚪✨")
+        }
+        shareToWhatsAppOrGeneral(context, message, customerMobile)
+    }
+
+    /**
+     * Share Payment Receipt via WhatsApp (PDF with caption)
      */
     fun sharePaymentReceiptWhatsApp(
         context: Context,
@@ -546,6 +599,51 @@ object ShareHelper {
             sharePdfDirect(context, uri, caption, "com.whatsapp", "WhatsApp", "Share Payment Receipt")
         } catch (e: Exception) {
             Toast.makeText(context, "Could not share Receipt: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Sends professional payment reminder via WhatsApp directly to customer
+     */
+    fun sendPaymentReminderWhatsApp(
+        context: Context,
+        customer: CustomerEntity,
+        balanceDue: Double,
+        company: CompanyProfileEntity
+    ) {
+        val message = buildPaymentReminderMessage(customer, balanceDue, company)
+        shareToWhatsAppOrGeneral(context, message, customer.mobile)
+    }
+
+    fun buildPaymentReminderMessage(
+        customer: CustomerEntity,
+        balanceDue: Double,
+        company: CompanyProfileEntity
+    ): String {
+        val effUpi = QrCodeHelper.resolveEffectiveUpiId(company)
+        val formattedBalance = String.format(Locale.US, "%.2f", balanceDue)
+        return buildString {
+            appendLine("🙏 *सादर प्रणाम ${customer.name} जी,*")
+            appendLine("*${company.businessName}*")
+            appendLine("━━━━━━━━━━━━━━━━━━━")
+            appendLine("📢 *भुगतान स्मरण (Payment Reminder)*")
+            appendLine("आपके खाते में कुल बकाया राशि: *₹$formattedBalance* है।")
+            appendLine("━━━━━━━━━━━━━━━━━━━")
+            appendLine("कृपया बकाया राशि का भुगतान अतिशीघ्र करने की कृपा करें।")
+            appendLine("")
+            if (effUpi.isNotBlank()) {
+                appendLine("📲 *Pay via UPI:* `$effUpi`")
+                appendLine("(Google Pay / PhonePe / Paytm / BHIM)")
+            }
+            if (company.bankName.isNotBlank() && company.accountNo.isNotBlank()) {
+                appendLine("🏦 *बैंक विवरण:*")
+                appendLine("बैंक: ${company.bankName}")
+                appendLine("खाता संख्या: ${company.accountNo}")
+                appendLine("IFSC: ${company.ifscCode}")
+            }
+            appendLine("")
+            appendLine("📞 संपर्क सूत्र: ${company.displayMobile}")
+            appendLine("सधन्यवाद! 🙏")
         }
     }
 }

@@ -83,7 +83,7 @@ interface BillDao {
             deleteItemsByBillId(bill.id)
             bill.id
         }
-        val itemsWithBillId = items.map { it.copy(billId = billId) }
+        val itemsWithBillId = items.map { it.copy(id = 0L, billId = billId) }
         insertBillItems(itemsWithBillId)
         return billId
     }
