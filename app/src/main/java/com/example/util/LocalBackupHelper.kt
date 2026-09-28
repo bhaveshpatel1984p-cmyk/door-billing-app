@@ -14,14 +14,14 @@ import java.util.Locale
 
 object LocalBackupHelper {
 
-    fun createBackupFile(context: Context, jsonContent: String): File {
+    const val DEFAULT_BACKUP_FILE_NAME = "Nirmal_Door_Billing_Backup.json"
+
+    fun createBackupFile(context: Context, jsonContent: String, fileName: String = DEFAULT_BACKUP_FILE_NAME): File {
         val backupDir = File(context.cacheDir, "backups")
         if (!backupDir.exists()) {
             backupDir.mkdirs()
         }
 
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val fileName = "door_billing_backup_$timeStamp.json"
         val file = File(backupDir, fileName)
 
         FileOutputStream(file).use { out ->

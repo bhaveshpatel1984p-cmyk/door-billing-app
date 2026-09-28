@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,6 +99,8 @@ fun BackupSyncScreen(
     val isOperating by viewModel.isBackupOperating.collectAsStateWithLifecycle()
     val lastBackupTime by viewModel.lastBackupTime.collectAsStateWithLifecycle()
     val lastBackupType by viewModel.lastBackupType.collectAsStateWithLifecycle()
+    val savedBackupUri by viewModel.savedBackupUri.collectAsStateWithLifecycle()
+    val savedBackupFileName by viewModel.savedBackupFileName.collectAsStateWithLifecycle()
 
     val bills by viewModel.allBills.collectAsStateWithLifecycle()
     val customers by viewModel.allCustomers.collectAsStateWithLifecycle()
@@ -114,7 +117,7 @@ fun BackupSyncScreen(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
         if (uri != null) {
-            viewModel.saveBackupToUri(uri, context)
+            viewModel.saveBackupToUri(uri, context, LocalBackupHelper.DEFAULT_BACKUP_FILE_NAME)
         }
     }
 
@@ -343,28 +346,181 @@ fun BackupSyncScreen(
                         )
 
                         if (googleAccount == null) {
-                            // Primary 1-Tap Google Drive Backup Button
-                            Button(
-                                onClick = {
-                                    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                                    saveBackupFileLauncher.launch("door_billing_backup_$timeStamp.json")
-                                },
-                                enabled = !isOperating,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(50.dp)
-                                    .testTag("backup_to_drive_button"),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
-                            ) {
-                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "Backup to Google Drive",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = Color.White
-                                )
+                            if (savedBackupUri != null) {
+                                // Linked Single-File Overwrite Box
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFFECFDF5),
+                                    border = BorderStroke(1.dp, Color(0xFF6EE7B7)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(
+                                                Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = Color(0xFF059669),
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Single-File Overwrite (एक ही फाइल में सेव)",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.5.sp,
+                                                    color = Color(0xFF065F46)
+                                                )
+                                                Text(
+                                                    text = savedBackupFileName,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 12.sp,
+                                                    color = Color(0xFF047857)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { viewModel.clearSavedBackupFile() },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Refresh,
+                                                    contentDescription = "Reset File Link",
+                                                    tint = Color(0xFF059669),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Text(
+                                            text = "✓ अब Google Drive पर हर बार अलग-अलग फाइल नहीं बनेगी। इसी एक फाइल में नया डेटा ओवरराइट (Update) होगा।",
+                                            fontSize = 11.5.sp,
+                                            lineHeight = 16.sp,
+                                            color = Color(0xFF065F46)
+                                        )
+
+                                        Button(
+                                            onClick = {
+                                                viewModel.overwriteSavedBackup(context)
+                                            },
+                                            enabled = !isOperating,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(48.dp)
+                                                .testTag("overwrite_backup_button"),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                                        ) {
+                                            if (isOperating) {
+                                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                                            } else {
+                                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    "⚡ Overwrite in Same File (अपडेट करें)",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.readSavedBackup(context) { result ->
+                                                        result.fold(
+                                                            onSuccess = { content ->
+                                                                try {
+                                                                    val parsed = AppBackupData.fromJsonString(content)
+                                                                    pendingFileJson = content
+                                                                    pendingBackupPreview = parsed
+                                                                    restoreSourceType = "Linked File ($savedBackupFileName)"
+                                                                    showRestoreConfirmDialog = true
+                                                                } catch (e: Exception) {
+                                                                    viewModel.showMessage("Invalid backup data in saved file: ${e.localizedMessage}")
+                                                                }
+                                                            },
+                                                            onFailure = { err ->
+                                                                viewModel.showMessage("Could not read saved file: ${err.localizedMessage}. Please pick file manually.")
+                                                            }
+                                                        )
+                                                    }
+                                                },
+                                                enabled = !isOperating,
+                                                modifier = Modifier.weight(1f).height(42.dp),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF059669))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Quick Restore", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF065F46))
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    saveBackupFileLauncher.launch(LocalBackupHelper.DEFAULT_BACKUP_FILE_NAME)
+                                                },
+                                                enabled = !isOperating,
+                                                modifier = Modifier.weight(1f).height(42.dp),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Change Location", fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Primary 1-Tap Google Drive / Storage Backup Button (Fixed Filename)
+                                Button(
+                                    onClick = {
+                                        saveBackupFileLauncher.launch(LocalBackupHelper.DEFAULT_BACKUP_FILE_NAME)
+                                    },
+                                    enabled = !isOperating,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(50.dp)
+                                        .testTag("backup_to_drive_button"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
+                                ) {
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Backup to Google Drive / Phone",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = Color.White
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "फाइल का नाम हमेशा 'Nirmal_Door_Billing_Backup.json' रहेगा। एक बार सेव करने के बाद सीधे 1-क्लिक ओवरराइट का विकल्प मिल जाएगा!",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                }
                             }
 
                             // Primary 1-Tap Google Drive Restore Button
@@ -382,7 +538,7 @@ fun BackupSyncScreen(
                                 Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF1E88E5))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    "Restore from Google Drive",
+                                    "Restore from Google Drive / Files",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp
                                 )
@@ -640,8 +796,7 @@ fun BackupSyncScreen(
                         // 1-Tap Save to Phone / Google Drive Button (100% Reliable SAF)
                         Button(
                             onClick = {
-                                val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                                saveBackupFileLauncher.launch("door_billing_backup_$timeStamp.json")
+                                saveBackupFileLauncher.launch(LocalBackupHelper.DEFAULT_BACKUP_FILE_NAME)
                             },
                             enabled = !isOperating,
                             modifier = Modifier
@@ -776,23 +931,46 @@ fun BackupSyncScreen(
 
                     pendingBackupPreview?.let { preview ->
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF0FDF4),
+                            border = BorderStroke(1.dp, Color(0xFF86EFAC)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFF16A34A),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = "Selected Backup Details (फाइल विवरण):",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp,
+                                        color = Color(0xFF166534)
+                                    )
+                                }
+
                                 Text(
-                                    text = "Backup Preview:",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
+                                    text = "📅 तारीख व समय: " + SimpleDateFormat("dd MMMM yyyy, hh:mm a", Locale.getDefault()).format(Date(preview.timestamp)),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF15803D)
                                 )
+
+                                HorizontalDivider(color = Color(0xFFBBF7D0), modifier = Modifier.padding(vertical = 2.dp))
+
                                 Text(
                                     text = "• Business: ${preview.companyProfile?.businessName ?: "Nirmal Door"}\n" +
-                                            "• Bills: ${preview.bills.size} entries\n" +
-                                            "• Customers: ${preview.customers.size} records\n" +
-                                            "• Purchases: ${preview.purchases.size} records",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            "• Bills: ${preview.bills.size} bills saved\n" +
+                                            "• Customers: ${preview.customers.size} customer records\n" +
+                                            "• Payments: ${preview.payments.size} payment receipts\n" +
+                                            "• Purchases: ${preview.purchases.size} purchase bills",
+                                    fontSize = 11.5.sp,
+                                    lineHeight = 16.sp,
+                                    color = Color(0xFF14532D)
                                 )
                             }
                         }

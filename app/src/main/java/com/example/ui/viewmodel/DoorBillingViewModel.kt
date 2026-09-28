@@ -88,6 +88,14 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
     private val _lastBackupType = MutableStateFlow(prefs.getString("last_backup_type", "") ?: "")
     val lastBackupType: StateFlow<String> = _lastBackupType.asStateFlow()
 
+    private val _savedBackupUri = MutableStateFlow<String?>(prefs.getString("saved_backup_file_uri", null))
+    val savedBackupUri: StateFlow<String?> = _savedBackupUri.asStateFlow()
+
+    private val _savedBackupFileName = MutableStateFlow<String>(
+        prefs.getString("saved_backup_file_name", "Nirmal_Door_Billing_Backup.json") ?: "Nirmal_Door_Billing_Backup.json"
+    )
+    val savedBackupFileName: StateFlow<String> = _savedBackupFileName.asStateFlow()
+
     private val _googleSignInErrorInfo = MutableStateFlow<String?>(null)
     val googleSignInErrorInfo: StateFlow<String?> = _googleSignInErrorInfo.asStateFlow()
 
@@ -1632,27 +1640,55 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
             .apply()
     }
 
-    fun saveBackupToUri(uri: Uri, context: Context, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+    fun saveBackupToUri(
+        uri: Uri,
+        context: Context,
+        fileName: String = "Nirmal_Door_Billing_Backup.json",
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
         _isBackupOperating.value = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Persist URI permission so the app can overwrite this exact file in future without opening picker
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                } catch (e: Exception) {
+                    // Ignored if provider does not support persistable permissions
+                }
+
                 val json = getExportBackupJson()
-                val outputStream = context.contentResolver.openOutputStream(uri)
-                    ?: throw Exception("Could not open destination for writing")
+                // Use "wt" (write-truncate) to cleanly overwrite any prior contents of the file
+                val outputStream = (try {
+                    context.contentResolver.openOutputStream(uri, "wt")
+                } catch (e: Exception) {
+                    null
+                }) ?: context.contentResolver.openOutputStream(uri)
+                ?: throw Exception("Could not open destination for writing")
+
                 outputStream.use { out ->
                     out.write(json.toByteArray(Charsets.UTF_8))
                     out.flush()
                 }
+
                 val now = System.currentTimeMillis()
                 _lastBackupTime.value = now
-                _lastBackupType.value = "Storage / Drive File"
+                _lastBackupType.value = "Single Backup File"
+                _savedBackupUri.value = uri.toString()
+                _savedBackupFileName.value = fileName
+
                 prefs.edit()
                     .putLong("last_backup_time", now)
-                    .putString("last_backup_type", "Storage / Drive File")
+                    .putString("last_backup_type", "Single Backup File")
+                    .putString("saved_backup_file_uri", uri.toString())
+                    .putString("saved_backup_file_name", fileName)
                     .apply()
+
                 _isBackupOperating.value = false
                 val backupData = AppBackupData.fromJsonString(json)
-                val msg = "Backup saved successfully! (${backupData.bills.size} Bills, ${backupData.customers.size} Customers)"
+                val msg = "Backup saved to $fileName! (${backupData.bills.size} Bills, ${backupData.customers.size} Customers)"
                 showMessage(msg)
                 withContext(Dispatchers.Main) {
                     onResult(true, msg)
@@ -1666,5 +1702,86 @@ class DoorBillingViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
         }
+    }
+
+    /**
+     * Overwrites existing single backup file in Google Drive or Storage in 1-tap without creating duplicates
+     */
+    fun overwriteSavedBackup(context: Context, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        val uriStr = _savedBackupUri.value
+        if (uriStr.isNullOrBlank()) {
+            val msg = "No saved backup file found. Please select a backup file first."
+            showMessage(msg)
+            onResult(false, msg)
+            return
+        }
+        val uri = Uri.parse(uriStr)
+        _isBackupOperating.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val json = getExportBackupJson()
+                val outputStream = (try {
+                    context.contentResolver.openOutputStream(uri, "wt")
+                } catch (e: Exception) {
+                    null
+                }) ?: context.contentResolver.openOutputStream(uri)
+                ?: throw Exception("Could not access saved backup file. Please select the file location again.")
+
+                outputStream.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
+
+                val now = System.currentTimeMillis()
+                _lastBackupTime.value = now
+                _lastBackupType.value = "Overwritten Single File"
+                prefs.edit()
+                    .putLong("last_backup_time", now)
+                    .putString("last_backup_type", "Overwritten Single File")
+                    .apply()
+
+                _isBackupOperating.value = false
+                val backupData = AppBackupData.fromJsonString(json)
+                val fileName = _savedBackupFileName.value
+                val msg = "✓ Successfully overwritten to $fileName! (${backupData.bills.size} Bills, ${backupData.customers.size} Customers)"
+                showMessage(msg)
+                withContext(Dispatchers.Main) {
+                    onResult(true, msg)
+                }
+            } catch (e: Exception) {
+                _isBackupOperating.value = false
+                val msg = "Could not overwrite file: ${e.localizedMessage}. Please choose backup file location again."
+                showMessage(msg)
+                // If permission was lost or file was deleted outside the app, clear stored URI
+                _savedBackupUri.value = null
+                prefs.edit().remove("saved_backup_file_uri").apply()
+                withContext(Dispatchers.Main) {
+                    onResult(false, msg)
+                }
+            }
+        }
+    }
+
+    /**
+     * Reads saved single backup file directly for 1-tap fast restore
+     */
+    fun readSavedBackup(context: Context, onResult: (Result<String>) -> Unit) {
+        val uriStr = _savedBackupUri.value
+        if (uriStr.isNullOrBlank()) {
+            onResult(Result.failure(Exception("No saved backup file location found")))
+            return
+        }
+        val uri = Uri.parse(uriStr)
+        viewModelScope.launch(Dispatchers.IO) {
+            val res = LocalBackupHelper.readBackupFromUri(context, uri)
+            withContext(Dispatchers.Main) {
+                onResult(res)
+            }
+        }
+    }
+
+    fun clearSavedBackupFile() {
+        _savedBackupUri.value = null
+        prefs.edit().remove("saved_backup_file_uri").apply()
     }
 }
